@@ -6,7 +6,7 @@
 .notification-device-push button:disabled { opacity:.55; }
   :root {
     --bg: #F7F4EC; --bg-2: #FFFFFF;
-    --ink: #211E18; --ink-2: #4B463C; --ink-3: #8C8578; --ink-4: #C9C3B4;
+    --ink: #211E18; --ink-2: #4B463C; --ink-3: #6D665A; --ink-4: #C9C3B4;
     --border: #ECE7DB; --border-strong: #D6CFBD;
     --forest: #2E4635; --forest-10: #E4EAE3; --action-green:#24533a;
     --green: #3B6D24; --green-10: #E9F2E0;
@@ -476,3 +476,34 @@
   .app-main-content { padding-bottom:calc(130px + env(safe-area-inset-bottom,0px)) !important; }
   @media(min-width:900px) { .app-main-content { padding-bottom:54px !important; } }
   @media(prefers-reduced-motion:reduce) { .app-modal-card { animation:none !important; } }
+
+  /* The two admin lists are viewport panels. This keeps their first row below
+     the fixed header even when iOS restores an older document scroll offset. */
+  @media (max-width:899px) {
+    .app-main-content.compact-admin-page {
+      position:fixed;
+      top:calc(72px + env(safe-area-inset-top,0px));
+      right:0;
+      bottom:0;
+      left:0;
+      width:100%;
+      max-width:480px;
+      margin:0 auto;
+      padding:0 16px calc(130px + env(safe-area-inset-bottom,0px)) !important;
+      overflow-y:auto;
+      overflow-x:hidden;
+      overscroll-behavior-y:contain;
+      -webkit-overflow-scrolling:touch;
+    }
+  }
+
+  /* The inbox owns its scroll. A touch outside it must not move the page. */
+  .notification-dismiss { touch-action:none; overscroll-behavior:contain; }
+  .notification-popover { direction:rtl; overscroll-behavior:contain; }
+  .notification-list { min-height:0; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+  .notification-preview { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; font-size:13px; line-height:1.6; color:var(--ink-2); font-weight:500; overflow-wrap:anywhere; }
+  .notification-item-top strong { min-width:0; overflow-wrap:anywhere; }
+  .notification-category b { min-width:0; overflow-wrap:anywhere; }
+  .notification-more { display:block; width:100%; min-height:44px; border:1px solid var(--glass-border); border-radius:12px; margin:3px 0; background:var(--glass-strong); color:var(--ink); font:inherit; font-weight:700; cursor:pointer; }
+  .notification-summary:focus-visible,.notification-more:focus-visible { outline:2px solid var(--action-green); outline-offset:-2px; }
+  html[data-theme="dark"] .notification-preview { color:var(--ink-2); }

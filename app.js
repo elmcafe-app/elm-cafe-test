@@ -629,7 +629,7 @@ var __startElmCafeApp__ = (() => {
       const onStart=event=>{
         if(event.touches.length!==1||refreshing||document.querySelector('[role="dialog"], .certificate-overlay'))return;
         if(event.target.closest('input, textarea, select, [contenteditable="true"]'))return;
-        if((document.scrollingElement?.scrollTop||window.scrollY)>1)return;
+        if((document.scrollingElement?.scrollTop||window.scrollY)>1 || (surface()?.scrollTop||0)>1)return;
         clearTimeout(returnTimer);
         clearTimeout(refreshTimer);
         gesture={x:event.touches[0].clientX,y:event.touches[0].clientY,distance:0,active:false};
@@ -2107,14 +2107,34 @@ var __startElmCafeApp__ = (() => {
   }
   function NotificationsModal({ evaluations, employees, onClose, onReview, onEnablePush, onDisablePush }) {
     const h=React.createElement;
-    const items=evaluations.filter(e=>e.is_violation&&e.status==="active")
-      .slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    const items=useMemo(()=>evaluations.filter(e=>e.is_violation&&e.status==="active")
+      .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)),[evaluations]);
+    const employeeNames=useMemo(()=>new Map(employees.map(e=>[e.id,e.name])),[employees]);
     const unread=items.filter(e=>!e.violation_reviewed).length;
     const [expandedId,setExpandedId]=useState(()=>items.find(e=>!e.violation_reviewed)?.id||items[0]?.id||null);
+    const [visibleCount,setVisibleCount]=useState(20);
     const [reviewingId,setReviewingId]=useState(null);
     const [pushState,setPushState]=useState('checking');
     const [pushBusy,setPushBusy]=useState(false);
     const [showPushSettings,setShowPushSettings]=useState(false);
+    useEffect(()=>{
+      // Keep the page in place while the inbox is open; only its list may scroll.
+      const y=window.scrollY;
+      const body=document.body;
+      const previous={position:body.style.position,top:body.style.top,left:body.style.left,right:body.style.right,width:body.style.width};
+      body.style.position='fixed';
+      body.style.top=`-${y}px`;
+      body.style.left='0';
+      body.style.right='0';
+      body.style.width='100%';
+      const onKeyDown=event=>{if(event.key==='Escape')onClose();};
+      document.addEventListener('keydown',onKeyDown);
+      return()=>{
+        document.removeEventListener('keydown',onKeyDown);
+        Object.assign(body.style,previous);
+        window.scrollTo(0,y);
+      };
+    },[]);
     useEffect(()=>{
       let mounted=true;
       if(!pushSupported()){setPushState('unavailable');return;}
@@ -2156,19 +2176,20 @@ var __startElmCafeApp__ = (() => {
         (pushState==='disabled'||pushState==='server-offline'||pushState==='unavailable'||showPushSettings)&&h("div",{className:"notification-device-push"},
           h("span",null,pushState==='enabled'?'إشعارات الجهاز مفعلة':pushState==='server-offline'?'خادم إشعارات الجهاز لم يجهز بعد':pushState==='unavailable'?'إشعارات الجهاز غير متاحة هنا':'إشعارات الجهاز خارج التطبيق'),
           ['enabled','disabled'].includes(pushState)&&h("button",{type:"button",disabled:pushBusy,onClick:toggleDevicePush},pushBusy?'جارٍ الحفظ…':pushState==='enabled'?'إيقاف':'تشغيل')),
-        h("div",{className:"notification-list"},items.length?items.map(e=>{
-          const empName=employees.find(emp=>emp.id===e.employee_id)?.name||"موظف";
+        h("div",{className:"notification-list"},items.length?items.slice(0,visibleCount).map(e=>{
+          const empName=employeeNames.get(e.employee_id)||"موظف غير موجود";
           const open=expandedId===e.id;
           return h("article",{key:e.id,className:`notification-item ${e.violation_reviewed?"reviewed":"unread"}`},
             h("button",{type:"button",className:"notification-summary",onClick:()=>setExpandedId(open?null:e.id),"aria-expanded":open,"aria-controls":`notification-detail-${e.id}`},
               h("span",{className:"notification-item-top"},h("strong",null,empName),h("time",null,relTime(e.created_at))),
-              h("span",{className:"notification-category"},h("b",null,e.category_name||"مخالفة"),h("small",null,e.violation_reviewed?"تمت المراجعة":"تحتاج مراجعة"))),
+              h("span",{className:"notification-category"},h("b",null,e.category_name||"مخالفة غير مصنّفة"),h("small",null,e.violation_reviewed?"تمت المراجعة":"تحتاج مراجعة")),
+              h("span",{className:"notification-preview"},e.note?.trim()||"لا يوجد وصف للمخالفة")),
             open&&h("div",{className:"notification-detail",id:`notification-detail-${e.id}`},
               h("span",{className:"notification-detail-label"},"سبب تسجيل المخالفة"),
               h("p",null,e.note?.trim()||"لم يكتب المقيم وصفًا لهذه المخالفة."),
               h("div",{className:"notification-meta"},h("span",null,"المقيم: ",e.evaluator_name||"—"),h("time",null,fmtDateTime(e.created_at))),
               !e.violation_reviewed&&h("button",{type:"button",className:"notification-review",disabled:reviewingId===e.id,onClick:()=>review(e.id)},reviewingId===e.id?"جارٍ الحفظ…":"تحديد كمراجَعة")));
-        }):h("div",{className:"notification-empty"},"لا توجد مخالفات تحتاج إلى متابعة."))));
+        }):h("div",{className:"notification-empty"},"لا توجد مخالفات مسجلة."),items.length>visibleCount&&h("button",{type:"button",className:"notification-more",onClick:()=>setVisibleCount(count=>count+20)},`عرض المزيد (${items.length-visibleCount})`))));
   }
   function AuditLogScreen({ audit, displayTarget, onTrash, onTrashAll }) {
     const [selected, setSelected] = useState(null);
