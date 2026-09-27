@@ -954,9 +954,9 @@ var __startElmCafeApp__ = (() => {
         session,
         onCancel: async (evId, reason) => {
           const patch = { status: "cancelled", edited_by: session.name, edited_at: nowISO(), cancel_reason: reason };
-          const { error } = await supabase.from("evaluations").update(patch).eq("id", evId);
-          if (error) {
-            showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u0625\u0644\u063A\u0627\u0621: ${error.message}`, "error");
+          const { data, error } = await supabase.from("evaluations").update(patch).eq("id", evId).select("id,status");
+          if (error || !data?.some(row => row.id === evId && row.status === "cancelled")) {
+            showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u0625\u0644\u063A\u0627\u0621: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
             return;
           }
           setEvaluations((prev) => prev.map((e) => e.id === evId ? { ...e, ...patch } : e));
@@ -999,9 +999,9 @@ var __startElmCafeApp__ = (() => {
           return true;
         },
         onArchive: async (id, archived) => {
-          const { error } = await supabase.from("employees").update({ archived }).eq("id", id);
-          if (error) {
-            showToast(`\u062A\u0639\u0630\u0651\u0631\u062A \u0627\u0644\u0639\u0645\u0644\u064A\u0629: ${error.message}`, "error");
+          const { data, error } = await supabase.from("employees").update({ archived }).eq("id", id).select("id,archived");
+          if (error || !data?.some(row => row.id === id && row.archived === archived)) {
+            showToast(`\u062A\u0639\u0630\u0651\u0631\u062A \u0627\u0644\u0639\u0645\u0644\u064A\u0629: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
             return;
           }
           setEmployees((prev) => prev.map((e) => e.id === id ? { ...e, archived } : e));
@@ -1009,9 +1009,9 @@ var __startElmCafeApp__ = (() => {
           showToast(archived ? "\u062A\u0645\u062A \u0627\u0644\u0623\u0631\u0634\u0641\u0629" : "\u062A\u0645\u062A \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0641\u0639\u064A\u0644");
         },
         onDelete: async (id, name) => {
-          const { error } = await supabase.from("employees").delete().eq("id", id);
-          if (error) {
-            showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u062D\u0630\u0641: ${error.message}`, "error");
+          const { data, error } = await supabase.from("employees").delete().eq("id", id).select("id");
+          if (error || !data?.some(row => row.id === id)) {
+            showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u062D\u0630\u0641: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
             return;
           }
           setEmployees((prev) => prev.filter((e) => e.id !== id));
@@ -1108,9 +1108,9 @@ var __startElmCafeApp__ = (() => {
           return true;
         },
         onUpdateCategory: async (id, patch) => {
-          const { error } = await supabase.from("categories").update(patch).eq("id", id);
-          if (error) {
-            showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u062A\u062D\u062F\u064A\u062B: ${error.message}`, "error");
+          const { data, error } = await supabase.from("categories").update(patch).eq("id", id).select("id");
+          if (error || !data?.some(row => row.id === id)) {
+            showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u062A\u062D\u062F\u064A\u062B: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
             return;
           }
           setCategories((prev) => prev.map((c) => c.id === id ? { ...c, ...patch } : c));
@@ -1301,9 +1301,9 @@ var __startElmCafeApp__ = (() => {
           await refetch();
         },
         onRestoreCycle: async (id) => {
-          const { error } = await supabase.from("cycles").update({ deleted_at: null }).eq("id", id);
-          if (error) {
-            showToast(`\u062A\u0639\u0630\u0651\u0631\u062A \u0627\u0644\u0639\u0645\u0644\u064A\u0629: ${error.message}`, "error");
+          const { data, error } = await supabase.from("cycles").update({ deleted_at: null }).eq("id", id).select("id,deleted_at");
+          if (error || !data?.some(row => row.id === id && !row.deleted_at)) {
+            showToast(`\u062A\u0639\u0630\u0651\u0631\u062A \u0627\u0644\u0639\u0645\u0644\u064A\u0629: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
             return;
           }
           setCycles((prev) => prev.map((c) => c.id === id ? { ...c, deleted_at: null } : c));
