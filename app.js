@@ -707,6 +707,22 @@ var __startElmCafeApp__ = (() => {
       const content=document.querySelector(".app-main-content");
       if (content) content.scrollTop=0;
     }, [screen,session?.id]);
+    useLayoutEffect(() => {
+      if (!session || !["moreMenu", "auditLog"].includes(screen)) return;
+      const frame = requestAnimationFrame(() => {
+        const content = document.querySelector(".app-main-content.compact-admin-page");
+        const header = document.querySelector(".app-topbar");
+        const first = content?.firstElementChild;
+        if (!content || !header || !first) return;
+        content.style.marginTop = "";
+        const gap = header.getBoundingClientRect().bottom + 12 - first.getBoundingClientRect().top;
+        // Correct the mobile safe-area offset without changing either panel's scroll behavior.
+        if (window.innerWidth < 900 && Math.abs(gap) > 3 && Math.abs(gap) < 220) {
+          content.style.marginTop = `${Math.round(gap)}px`;
+        }
+      });
+      return () => cancelAnimationFrame(frame);
+    }, [screen, session?.id]);
     function goBack() {
       const doNav = () => {
         setStack((s2) => {
