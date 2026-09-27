@@ -439,9 +439,6 @@
   .executive-hero .hero-actions button { background:rgba(255,255,255,.14) !important;color:#fff !important; }
   .evaluation-hub .quick-evaluation-grid { width:100%; }.evaluation-hub .quick-evaluation-pick { width:100%;background:var(--glass-strong) !important; }.evaluation-hub .quick-evaluation-item { width:100%; }.evaluation-hub .modern-search { box-sizing:border-box; }
   .more-screen-grid { grid-template-columns:minmax(0,1fr); }.more-screen .more-row { text-align:right; }
-  @media(max-width:899px) {
-    .app-main-content.compact-admin-page { width:100%; box-sizing:border-box; padding-top:calc(74px + env(safe-area-inset-top,0px)) !important; padding-inline:16px !important; }
-  }
   .more-screen { gap:0; padding-bottom:calc(20px + env(safe-area-inset-bottom,0px)); }
   .more-screen-grid { width:100%; min-width:0; gap:9px !important; }
   .more-screen .more-row { min-height:58px; border-radius:16px; color:var(--ink) !important; font:inherit; font-weight:700; }
@@ -476,26 +473,6 @@
   .app-main-content { padding-bottom:calc(130px + env(safe-area-inset-bottom,0px)) !important; }
   @media(min-width:900px) { .app-main-content { padding-bottom:54px !important; } }
   @media(prefers-reduced-motion:reduce) { .app-modal-card { animation:none !important; } }
-
-  /* The two admin lists are viewport panels. This keeps their first row below
-     the fixed header even when iOS restores an older document scroll offset. */
-  @media (max-width:899px) {
-    .app-main-content.compact-admin-page {
-      position:fixed;
-      top:calc(72px + env(safe-area-inset-top,0px));
-      right:0;
-      bottom:0;
-      left:0;
-      width:100%;
-      max-width:480px;
-      margin:0 auto;
-      padding:0 16px calc(130px + env(safe-area-inset-bottom,0px)) !important;
-      overflow-y:auto;
-      overflow-x:hidden;
-      overscroll-behavior-y:contain;
-      -webkit-overflow-scrolling:touch;
-    }
-  }
 
   /* The inbox owns its scroll. A touch outside it must not move the page. */
   .notification-dismiss { touch-action:none; overscroll-behavior:contain; }
