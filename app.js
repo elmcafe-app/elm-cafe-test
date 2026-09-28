@@ -574,6 +574,12 @@ var __startElmCafeApp__ = (() => {
       window.addEventListener("online", onOnline);
       return () => { window.removeEventListener("offline", onOffline); window.removeEventListener("online", onOnline); };
     }, [session]);
+    useMemo(() => {
+      // Feed English names into the interface translator during render, so the very same render already shows them.
+      const pairs = {};
+      [...employees, ...categories].forEach(item => { if (item?.name && item?.name_en) pairs[item.name] = item.name_en; });
+      window.ElmI18n?.registerNames?.(pairs);
+    }, [employees, categories]);
     useEffect(() => {
       if (!session) return;
       let timer = null;
@@ -581,11 +587,24 @@ var __startElmCafeApp__ = (() => {
       const scheduleRefresh = table => {
         changed.add(table);
         if (timer) clearTimeout(timer);
+        // Violation notifications must feel instant; other tables keep a short debounce to batch bursts.
+        const delay = changed.has("violation_inbox") ? 80 : 350;
         timer = setTimeout(() => {
           const tables=[...changed]; changed.clear();
           tables.forEach(name => refreshChangedTable(name));
-        }, 350);
+        }, delay);
       };
+      let channelWasDown = false;
+      let hiddenAt = 0;
+      const onVisibility = () => {
+        if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+        // iOS suspends websockets for home-screen apps: on return, re-sync anything missed while away.
+        if (hiddenAt && Date.now() - hiddenAt > 20000) refetch();
+        else scheduleRefresh("violation_inbox");
+        hiddenAt = 0;
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      window.addEventListener("pageshow", onVisibility);
       const channel = supabase.channel("elm-realtime")
         .on("postgres_changes", { event:"*", schema:"public", table:"evaluations" }, () => scheduleRefresh("evaluations"))
         .on("postgres_changes", { event:"*", schema:"public", table:"employees" }, () => scheduleRefresh("employees"))
@@ -598,8 +617,16 @@ var __startElmCafeApp__ = (() => {
         .on("postgres_changes", { event:"*", schema:"public", table:"employee_reward_redemptions" }, () => scheduleRefresh("employee_reward_redemptions"))
         .on("postgres_changes", { event:"*", schema:"public", table:"profiles" }, () => scheduleRefresh("profiles"))
         .on("postgres_changes", { event:"*", schema:"public", table:"violation_inbox" }, () => scheduleRefresh("violation_inbox"))
-        .subscribe();
-      return () => { if (timer) clearTimeout(timer); supabase.removeChannel(channel); };
+        .subscribe(status => {
+          if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) channelWasDown = true;
+          else if (status === "SUBSCRIBED" && channelWasDown) { channelWasDown = false; refetch(); }
+        });
+      return () => {
+        if (timer) clearTimeout(timer);
+        document.removeEventListener("visibilitychange", onVisibility);
+        window.removeEventListener("pageshow", onVisibility);
+        supabase.removeChannel(channel);
+      };
     }, [session]);
     async function manualRefresh() {
       if (refreshing) return;
@@ -708,21 +735,24 @@ var __startElmCafeApp__ = (() => {
       if (content) content.scrollTop=0;
     }, [screen,session?.id]);
     useLayoutEffect(() => {
-      if (!session || !["moreMenu", "auditLog"].includes(screen)) return;
-      const frame = requestAnimationFrame(() => {
-        const content = document.querySelector(".app-main-content.compact-admin-page");
-        const header = document.querySelector(".app-topbar");
-        const first = content?.firstElementChild;
-        if (!content || !header || !first) return;
-        content.style.marginTop = "";
-        const gap = header.getBoundingClientRect().bottom + 12 - first.getBoundingClientRect().top;
-        // Correct the mobile safe-area offset without changing either panel's scroll behavior.
-        if (window.innerWidth < 900 && Math.abs(gap) > 3 && Math.abs(gap) < 220) {
-          content.style.marginTop = `${Math.round(gap)}px`;
-        }
-      });
-      return () => cancelAnimationFrame(frame);
-    }, [screen, session?.id]);
+      if (!session) return;
+      const header = document.querySelector(".app-topbar");
+      if (!header) return;
+      const applyTopbarSpace = () => {
+        const gap = header.getBoundingClientRect().bottom + 12;
+        document.documentElement.style.setProperty("--topbar-space", `${Math.round(gap)}px`);
+      };
+      applyTopbarSpace();
+      const observer = new ResizeObserver(applyTopbarSpace);
+      observer.observe(header);
+      window.addEventListener("resize", applyTopbarSpace);
+      window.addEventListener("orientationchange", applyTopbarSpace);
+      return () => {
+        observer.disconnect();
+        window.removeEventListener("resize", applyTopbarSpace);
+        window.removeEventListener("orientationchange", applyTopbarSpace);
+      };
+    }, [session]);
     function goBack() {
       const doNav = () => {
         setStack((s2) => {
@@ -1865,6 +1895,7 @@ var __startElmCafeApp__ = (() => {
   function AdminEmployees({ employees, onAdd, onArchive, onDelete }) {
     const [open, setOpen] = useState(false);
     const [name, setName] = useState("");
+    const [nameEn, setNameEn] = useState("");
     const [empId, setEmpId] = useState("");
     const [profession, setProfession] = useState("");
     const [err, setErr] = useState("");
@@ -1880,11 +1911,12 @@ var __startElmCafeApp__ = (() => {
         return;
       }
       setSaving(true);
-      const ok = await onAdd({ employee_code: empId.trim(), name: name.trim(), profession: profession.trim(), archived: false });
+      const ok = await onAdd({ employee_code: empId.trim(), name: name.trim(), ...(nameEn.trim() ? { name_en: nameEn.trim() } : {}), profession: profession.trim(), archived: false });
       setSaving(false);
       if (ok !== false) {
         setOpen(false);
         setName("");
+        setNameEn("");
         setEmpId("");
         setProfession("");
         setErr("");
@@ -1893,7 +1925,7 @@ var __startElmCafeApp__ = (() => {
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", style: { width: "100%", marginBottom: 14 }, onClick: () => setOpen(true) }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.plus, size: 16 }), " \u0625\u0636\u0627\u0641\u0629 \u0645\u0648\u0638\u0641"), !employees.length ? /* @__PURE__ */ React.createElement(EmptyState, { icon: /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.users, size: 28 }), title: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0648\u0638\u0641\u0648\u0646", body: "\u0627\u0628\u062F\u0623 \u0628\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0644 \u0645\u0648\u0638\u0641." }) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, employees.map((e) => /* @__PURE__ */ React.createElement("div", { key: e.id, style: { ...s.rowCard, cursor: "default" } }, /* @__PURE__ */ React.createElement("div", { style: { ...s.avatarCircle, background: avatarColor(e.name).bg, color: avatarColor(e.name).fg } }, e.name.slice(0, 1)), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, e.name, " ", e.archived && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-3)", fontWeight: 400, fontSize: 12 } }, "(\u0645\u0624\u0631\u0634\u0641)")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)" } }, e.profession, " \xB7 \u0631\u0642\u0645 ", e.employee_code)), /* @__PURE__ */ React.createElement("button", { onClick: () => setArchiveTarget(e), style: s.iconBtn, "aria-label": "\u0623\u0631\u0634\u0641\u0629" }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.archive, size: 16, color: e.archived ? "var(--forest)" : "var(--ink-3)" })), /* @__PURE__ */ React.createElement("button", { onClick: () => {
       setDeleteTarget(e);
       setConfirmText("");
-    }, style: s.iconBtn, "aria-label": "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A" }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.trash, size: 16, color: "var(--red)" }))))), open && /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u0645\u0648\u0638\u0641", onClose: () => setOpen(false), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: submit, disabled: saving }, saving ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setOpen(false) }, "\u0625\u0644\u063A\u0627\u0621")) }, /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0638\u0641" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: name, onChange: (e) => setName(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0648\u0638\u064A\u0641\u064A" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: empId, onChange: (e) => setEmpId(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0645\u0633\u0645\u0649 \u0627\u0644\u0648\u0638\u064A\u0641\u064A" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: profession, onChange: (e) => setProfession(e.target.value) })), err && /* @__PURE__ */ React.createElement("div", { style: s.errText }, err)), archiveTarget && /* @__PURE__ */ React.createElement(Modal, { title: archiveTarget.archived ? "\u0625\u0639\u0627\u062F\u0629 \u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u0645\u0648\u0638\u0641" : "\u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0648\u0638\u0641", onClose: () => setArchiveTarget(null), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: archiveTarget.archived ? "primary" : "danger", onClick: () => {
+    }, style: s.iconBtn, "aria-label": "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A" }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.trash, size: 16, color: "var(--red)" }))))), open && /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u0645\u0648\u0638\u0641", onClose: () => setOpen(false), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: submit, disabled: saving }, saving ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setOpen(false) }, "\u0625\u0644\u063A\u0627\u0621")) }, /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0638\u0641" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: name, onChange: (e) => setName(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0627\u0633\u0645 \u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)" }, /* @__PURE__ */ React.createElement("input", { style: { ...s.input, direction: "ltr", textAlign: "left" }, value: nameEn, onChange: (e) => setNameEn(e.target.value), autoCapitalize: "words" })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0648\u0638\u064A\u0641\u064A" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: empId, onChange: (e) => setEmpId(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0645\u0633\u0645\u0649 \u0627\u0644\u0648\u0638\u064A\u0641\u064A" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: profession, onChange: (e) => setProfession(e.target.value) })), err && /* @__PURE__ */ React.createElement("div", { style: s.errText }, err)), archiveTarget && /* @__PURE__ */ React.createElement(Modal, { title: archiveTarget.archived ? "\u0625\u0639\u0627\u062F\u0629 \u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u0645\u0648\u0638\u0641" : "\u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0648\u0638\u0641", onClose: () => setArchiveTarget(null), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: archiveTarget.archived ? "primary" : "danger", onClick: () => {
       onArchive(archiveTarget.id, !archiveTarget.archived);
       setArchiveTarget(null);
     } }, archiveTarget.archived ? "\u062A\u0623\u0643\u064A\u062F \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0641\u0639\u064A\u0644" : "\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0623\u0631\u0634\u0641\u0629"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setArchiveTarget(null) }, "\u062A\u0631\u0627\u062C\u0639")) }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, archiveTarget.archived ? `\u0633\u064A\u0638\u0647\u0631 "${archiveTarget.name}" \u0645\u0631\u0629 \u0623\u062E\u0631\u0649 \u0641\u064A \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646 \u0627\u0644\u0646\u0634\u0637\u064A\u0646.` : `\u0644\u0646 \u064A\u0638\u0647\u0631 "${archiveTarget.name}" \u0641\u064A \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646\u060C \u0644\u0643\u0646 \u0633\u062C\u0644 \u062A\u0642\u064A\u064A\u0645\u0627\u062A\u0647 \u0627\u0644\u0633\u0627\u0628\u0642\u0629 \u064A\u0628\u0642\u0649 \u0645\u062D\u0641\u0648\u0638\u064B\u0627 \u0628\u0627\u0644\u0643\u0627\u0645\u0644.`)), deleteTarget && /* @__PURE__ */ React.createElement(Modal, { title: "\u062D\u0630\u0641 \u0627\u0644\u0645\u0648\u0638\u0641 \u0646\u0647\u0627\u0626\u064A\u064B\u0627", onClose: () => setDeleteTarget(null), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "danger", disabled: confirmText.trim() !== deleteTarget.name.trim(), onClick: () => {
@@ -1957,6 +1989,7 @@ var __startElmCafeApp__ = (() => {
   function AdminCategories({ categories, ratingBands, onAddCategory, onUpdateCategory, onUpdateBands, onArchiveCategory, onArchiveBand }) {
     const [open, setOpen] = useState(false);
     const [name, setName] = useState("");
+    const [nameEn, setNameEn] = useState("");
     const [type, setType] = useState("negative");
     const [points, setPoints] = useState(2);
     const [editPoints, setEditPoints] = useState({});
@@ -1971,11 +2004,12 @@ var __startElmCafeApp__ = (() => {
       if (saving || !name.trim() || !points) return;
       setSaving(true);
       let ok;
-      try { ok = await onAddCategory({ name: name.trim(), type, points: Number(points), active: true }); }
+      try { ok = await onAddCategory({ name: name.trim(), ...(nameEn.trim() ? { name_en: nameEn.trim() } : {}), type, points: Number(points), active: true }); }
       finally { setSaving(false); }
       if (ok === false) return;
       setOpen(false);
       setName("");
+      setNameEn("");
       setType("negative");
       setPoints(2);
     }
@@ -1997,7 +2031,7 @@ var __startElmCafeApp__ = (() => {
       const nb = [...bands];
       nb[i] = { ...b, label: e.target.value };
       setBands(nb);
-    } }), /* @__PURE__ */ React.createElement("button", {onClick:()=>{const midpoint=Math.floor((b.min+b.max)/2);if(midpoint>=b.max)return;const next=[...bands];next.splice(i,1,{...b,max:midpoint},{id:null,min:midpoint+1,max:b.max,label:"نطاق جديد"});setBands(next);},disabled:b.max-b.min<1,style:s.iconBtn,"aria-label":"تقسيم النطاق وإضافة نطاق جديد"}, /* @__PURE__ */ React.createElement(Icon,{svg:ICONS.plus,size:15,color:"var(--forest)"})), /* @__PURE__ */ React.createElement("button", {onClick:()=>setPendingArchive({type:"band",id:b.id,label:b.label}),disabled:bands.length<2 || !b.id,style:s.iconBtn,"aria-label":"نقل النطاق للسلة"}, /* @__PURE__ */ React.createElement(Icon,{svg:ICONS.trash,size:15,color:"var(--red)"}))))), /* @__PURE__ */ React.createElement(Btn, { onClick: async () => { if(saving)return;setSaving(true);try{await onUpdateBands(bands);}finally{setSaving(false);} }, disabled:saving, style: { width: "100%" } }, saving ? "جارِ الحفظ…" : "\u062D\u0641\u0638 \u0627\u0644\u0646\u0637\u0627\u0642\u0627\u062A"), open && /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u062A\u0635\u0646\u064A\u0641", onClose: () => setOpen(false), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: submit, disabled: saving }, saving ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setOpen(false) }, "\u0625\u0644\u063A\u0627\u0621")) }, /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0627\u0633\u0645" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: name, onChange: (e) => setName(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0646\u0648\u0639" }, /* @__PURE__ */ React.createElement("select", { style: s.input, value: type, onChange: (e) => setType(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "negative" }, "\u0633\u0644\u0628\u064A"), /* @__PURE__ */ React.createElement("option", { value: "positive" }, "\u0625\u064A\u062C\u0627\u0628\u064A"))), /* @__PURE__ */ React.createElement(Field, { label: "\u0639\u062F\u062F \u0627\u0644\u0646\u0642\u0627\u0637" }, /* @__PURE__ */ React.createElement("input", { type: "number", min: "1", style: s.input, value: points, onChange: (e) => setPoints(e.target.value) }))), pendingArchive && /* @__PURE__ */ React.createElement(Modal,{title:"نقل إلى سلة المهملات",onClose:()=>setPendingArchive(null),footer: /* @__PURE__ */ React.createElement(React.Fragment,null, /* @__PURE__ */ React.createElement(Btn,{variant:"danger",disabled:saving,onClick:async()=>{if(saving)return;setSaving(true);const ok=await(pendingArchive.type==="band"?onArchiveBand:onArchiveCategory)(pendingArchive.id);setSaving(false);if(ok)setPendingArchive(null);}},saving?"جارِ النقل…":"نقل للسلة"), /* @__PURE__ */ React.createElement(Btn,{variant:"ghost",onClick:()=>setPendingArchive(null)},"تراجع"))},"سيختفي «",pendingArchive.label,"» من خيارات التقييم الجديدة. التقييمات السابقة محفوظة. حذف النطاق يضم درجاته للنطاق المجاور حتى لا تترك فجوة."));
+    } }), /* @__PURE__ */ React.createElement("button", {onClick:()=>{const midpoint=Math.floor((b.min+b.max)/2);if(midpoint>=b.max)return;const next=[...bands];next.splice(i,1,{...b,max:midpoint},{id:null,min:midpoint+1,max:b.max,label:"نطاق جديد"});setBands(next);},disabled:b.max-b.min<1,style:s.iconBtn,"aria-label":"تقسيم النطاق وإضافة نطاق جديد"}, /* @__PURE__ */ React.createElement(Icon,{svg:ICONS.plus,size:15,color:"var(--forest)"})), /* @__PURE__ */ React.createElement("button", {onClick:()=>setPendingArchive({type:"band",id:b.id,label:b.label}),disabled:bands.length<2 || !b.id,style:s.iconBtn,"aria-label":"نقل النطاق للسلة"}, /* @__PURE__ */ React.createElement(Icon,{svg:ICONS.trash,size:15,color:"var(--red)"}))))), /* @__PURE__ */ React.createElement(Btn, { onClick: async () => { if(saving)return;setSaving(true);try{await onUpdateBands(bands);}finally{setSaving(false);} }, disabled:saving, style: { width: "100%" } }, saving ? "جارِ الحفظ…" : "\u062D\u0641\u0638 \u0627\u0644\u0646\u0637\u0627\u0642\u0627\u062A"), open && /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u062A\u0635\u0646\u064A\u0641", onClose: () => setOpen(false), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: submit, disabled: saving }, saving ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setOpen(false) }, "\u0625\u0644\u063A\u0627\u0621")) }, /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0627\u0633\u0645" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: name, onChange: (e) => setName(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0627\u0633\u0645 \u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)" }, /* @__PURE__ */ React.createElement("input", { style: { ...s.input, direction: "ltr", textAlign: "left" }, value: nameEn, onChange: (e) => setNameEn(e.target.value), autoCapitalize: "words" })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0646\u0648\u0639" }, /* @__PURE__ */ React.createElement("select", { style: s.input, value: type, onChange: (e) => setType(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "negative" }, "\u0633\u0644\u0628\u064A"), /* @__PURE__ */ React.createElement("option", { value: "positive" }, "\u0625\u064A\u062C\u0627\u0628\u064A"))), /* @__PURE__ */ React.createElement(Field, { label: "\u0639\u062F\u062F \u0627\u0644\u0646\u0642\u0627\u0637" }, /* @__PURE__ */ React.createElement("input", { type: "number", min: "1", style: s.input, value: points, onChange: (e) => setPoints(e.target.value) }))), pendingArchive && /* @__PURE__ */ React.createElement(Modal,{title:"نقل إلى سلة المهملات",onClose:()=>setPendingArchive(null),footer: /* @__PURE__ */ React.createElement(React.Fragment,null, /* @__PURE__ */ React.createElement(Btn,{variant:"danger",disabled:saving,onClick:async()=>{if(saving)return;setSaving(true);const ok=await(pendingArchive.type==="band"?onArchiveBand:onArchiveCategory)(pendingArchive.id);setSaving(false);if(ok)setPendingArchive(null);}},saving?"جارِ النقل…":"نقل للسلة"), /* @__PURE__ */ React.createElement(Btn,{variant:"ghost",onClick:()=>setPendingArchive(null)},"تراجع"))},"سيختفي «",pendingArchive.label,"» من خيارات التقييم الجديدة. التقييمات السابقة محفوظة. حذف النطاق يضم درجاته للنطاق المجاور حتى لا تترك فجوة."));
   }
   function addOneMonth(dateStr) {
     const d = /* @__PURE__ */ new Date(dateStr + "T00:00:00");
@@ -2269,7 +2303,7 @@ var __startElmCafeApp__ = (() => {
   }
   const s = {
     topbar: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "6px 8px 6px 14px", background: "var(--glass)", backdropFilter: "blur(22px) saturate(165%)", WebkitBackdropFilter: "blur(22px) saturate(165%)", position: "fixed", top: "calc(14px + env(safe-area-inset-top, 0px))", left: 10, right: 10, maxWidth: 460, margin: "0 auto", zIndex: 9, border: "1px solid var(--glass-border)", borderRadius: 22, boxShadow: "0 10px 30px rgba(33,30,24,.1), inset 0 1px rgba(255,255,255,.85)" },
-    body: { padding: "18px 16px 44px", paddingTop: "calc(88px + env(safe-area-inset-top, 0px))" },
+    body: { padding: "18px 16px 44px", paddingTop: "var(--topbar-space, calc(88px + env(safe-area-inset-top, 0px)))" },
     bottomNav: { position: "fixed", bottom: "calc(8px + env(safe-area-inset-bottom, 0px))", left: 16, right: 16, maxWidth: 452, margin: "0 auto", display: "flex", background: "rgba(255,255,255,0.72)", backdropFilter: "blur(16px) saturate(180%)", WebkitBackdropFilter: "blur(16px) saturate(180%)", border: "1px solid var(--glass-border)", borderRadius: 20, boxShadow: "0 8px 28px rgba(33,30,24,0.16), 0 2px 8px rgba(33,30,24,0.08)", zIndex: 8, padding: "2px 2px" },
     bottomNavBtn: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px 4px 5px", minHeight: 48, background: "none", border: "none", cursor: "pointer" },
     iconBtn: { background: "transparent", border: "none", cursor: "pointer", padding: 10, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-2)", minWidth: 44, minHeight: 44 },
