@@ -4,7 +4,56 @@ var __startElmCafeApp__ = (() => {
   const SUPABASE_ANON_KEY = "sb_publishable_FnhXzXCDLHTwvGGkZBBrkA_UPrm-tZ3";
   const VAPID_PUBLIC_KEY = "BEwpC6fDUNsyVsIZBJZFeuRfTEeH3kyslmsWvBN47CXSaIPDP5nbxJD7QoJdOKQTumM8xAj815BBoJfIiZvIHeQ";
   const EMAIL_DOMAIN = "elmcafe.app";
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // Retry only read requests. Mutations and Auth must never be replayed here.
+  function createReadRetryFetch(baseFetch, { sleep = abortableRetryDelay, random = Math.random } = {}) {
+    return async function readRetryFetch(input, init = {}) {
+      const request = typeof Request !== "undefined" && input instanceof Request ? input : null;
+      const url = new URL(request ? request.url : String(input), SUPABASE_URL);
+      const method = String(init.method || request?.method || "GET").toUpperCase();
+      const signal = init.signal || request?.signal;
+      const mayRetry = url.origin === new URL(SUPABASE_URL).origin &&
+        url.pathname.startsWith("/rest/v1/") && ["GET", "HEAD"].includes(method);
+      for (let attempt = 0; ; attempt++) {
+        if (signal?.aborted) throw signal.reason || new DOMException("Aborted", "AbortError");
+        let response;
+        try {
+          response = await baseFetch(request && mayRetry ? request.clone() : input, init);
+        } catch (error) {
+          if (!mayRetry || attempt >= 2 || signal?.aborted || error?.name !== "TypeError") throw error;
+          await sleep(500 * 2 ** attempt + Math.floor(random() * 200), signal);
+          continue;
+        }
+        if (!mayRetry || attempt >= 2 || ![408, 429, 502, 503, 504].includes(response.status)) return response;
+        const retryAfter = response.headers.get("Retry-After");
+        let requestedDelay = 0;
+        if (retryAfter) {
+          requestedDelay = /^\d+(\.\d+)?$/.test(retryAfter.trim())
+            ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now();
+          if (!Number.isFinite(requestedDelay)) requestedDelay = 0;
+        }
+        // Respect long server limits by returning the error, not retrying early.
+        if (requestedDelay > 10000) return response;
+        const delay = Math.max(requestedDelay, 500 * 2 ** attempt + Math.floor(random() * 200));
+        try { await response.body?.cancel(); } catch (_) {}
+        await sleep(delay, signal);
+      }
+    };
+  }
+  function abortableRetryDelay(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) return reject(signal.reason || new DOMException("Aborted", "AbortError"));
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(signal.reason || new DOMException("Aborted", "AbortError"));
+      };
+      const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+      signal?.addEventListener("abort", onAbort, { once:true });
+    });
+  }
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { fetch:createReadRetryFetch(window.fetch.bind(window)) }
+  });
   const LOGO_SRC = "./elm-cafe-logo.png";
   const DEFAULT_RATING_BANDS_FALLBACK = [
     { min: 90, max: 100, label: "\u0645\u0645\u062A\u0627\u0632" },
@@ -218,12 +267,14 @@ var __startElmCafeApp__ = (() => {
       return { failed:true, errorText:[message, stack].filter(Boolean).join("\n") };
     }
     componentDidCatch(error) { console.error("Elm Cafe render error", error); }
+    retryRender() { this.setState({ failed:false, errorText:"" }); }
     async recoverSession() { try { await supabase.auth.signOut({scope:"local"}); } catch (_) {} location.replace(location.pathname + "?reload=" + Date.now()); }
     render() {
       if (!this.state.failed) return this.props.children;
-      return React.createElement("div",{className:"app-fallback"},
+      return React.createElement("div",{className:"app-fallback",role:"alert",style:{background:"var(--glass-strong)",border:"1px solid var(--glass-border)",borderRadius:20,backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",padding:24}},
         React.createElement("strong",null,"تعذّر عرض هذه الشاشة"),
         React.createElement("p",null,"يمكنك إعادة تحميل التطبيق. لو كنت بتكتب تقييم، راجع السجل قبل إعادة المحاولة حتى لا يتكرر."),
+        React.createElement("button",{type:"button",onClick:()=>this.retryRender()},"إعادة المحاولة"),
         React.createElement("button",{type:"button",onClick:()=>location.replace(location.pathname + "?reload=" + Date.now())},"إعادة تحميل التطبيق"),
         React.createElement("button",{type:"button",className:"fallback-secondary",onClick:this.recoverSession},"تسجيل الدخول من جديد على هذا المتصفح"),
         this.state.errorText && React.createElement("details",null,React.createElement("summary",null,"تفاصيل الخطأ لإرسالها للدعم"),React.createElement("pre",null,this.state.errorText)));
