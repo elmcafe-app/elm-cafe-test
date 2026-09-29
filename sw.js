@@ -1,4 +1,19 @@
-// Push only. The app still requires a network connection to load its code and data.
+// ELM CAFE 1.2.0. Cache static assets only; never Auth/API responses or employee data.
+const CACHE_PREFIX='elm-assets-'+encodeURIComponent(self.registration.scope)+'-';
+const CACHE_NAME=CACHE_PREFIX+'1.2.0';
+const ASSETS=["./","./index.html","./app.js","./app.css","./i18n.js","./public-config.js","./manifest.json","./elm-cafe-logo.png","./apple-touch-icon.png","./pwa-icon-192.png","./pwa-icon-512.png","./elm-arabic-1.ttf","./elm-arabic-2.ttf","./vendor/react.js","./vendor/react-dom.js","./vendor/supabase.js","./modules/management.js","./modules/reports.js","./modules/records.js"];
+const ALLOWED=new Set(ASSETS.map(p=>new URL(p,self.registration.scope).pathname));
+self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(ASSETS)));});
+// No skipWaiting: an open session/form must not receive mixed release files.
+self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const name of await caches.keys())if(name.startsWith(CACHE_PREFIX)&&name!==CACHE_NAME)await caches.delete(name);await self.clients.claim();})()));
+self.addEventListener('fetch',event=>{
+ const url=new URL(event.request.url);
+ if(event.request.method!=='GET'||url.origin!==self.location.origin||!ALLOWED.has(url.pathname))return;
+ // Query strings carry release hints only; cache is already isolated by release and project scope.
+ const key=event.request.mode==='navigate'?new URL('./index.html',self.registration.scope).href:url.origin+url.pathname;
+ event.respondWith((async()=>{const cache=await caches.open(CACHE_NAME);const cached=await cache.match(key);if(cached)return cached;const response=await fetch(event.request);if(response.ok&&response.type!=='opaque')await cache.put(key,response.clone());return response;})());
+});
+
 self.addEventListener('push', event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (_) {}

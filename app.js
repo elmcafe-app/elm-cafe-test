@@ -1,4 +1,5 @@
 var __startElmCafeApp__ = (() => {
+  window.ELM_CAFE_VERSION = "1.2.0";
   const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
   const SUPABASE_URL = "https://izfimghzcasnbmdsftps.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_FnhXzXCDLHTwvGGkZBBrkA_UPrm-tZ3";
@@ -54,6 +55,19 @@ var __startElmCafeApp__ = (() => {
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { fetch:createReadRetryFetch(window.fetch.bind(window)) }
   });
+  const tr=value=>window.ElmI18n?.translate(value)??value;
+  const locale=()=>window.ElmI18n?.getLanguage()==="en"?"en-GB":"ar-EG-u-nu-latn";
+  const matches=(value,query)=>[String(value??""),String(tr(value??""))].some(v=>v.toLowerCase().includes(query.trim().toLowerCase()));
+  let currentScreen="startup", telemetryBusy=false;
+  const telemetrySent=new Map();
+  async function reportClientError(code) {
+    const key=code+":"+currentScreen;
+    if(telemetryBusy||Date.now()-(telemetrySent.get(key)||0)<60000||!navigator.onLine)return;
+    telemetryBusy=true;telemetrySent.set(key,Date.now());
+    try { const {data}=await supabase.auth.getSession(); if(data?.session) await supabase.rpc("report_client_error",{p_release:window.ELM_CAFE_VERSION,p_code:code,p_screen:currentScreen}); } catch(_) {} finally {telemetryBusy=false;}
+  }
+  window.addEventListener("error",()=>reportClientError("runtime_error"));
+  window.addEventListener("unhandledrejection",()=>reportClientError("unhandled_rejection"));
   const LOGO_SRC = "./elm-cafe-logo.png";
   const DEFAULT_RATING_BANDS_FALLBACK = [
     { min: 90, max: 100, label: "\u0645\u0645\u062A\u0627\u0632" },
@@ -67,7 +81,7 @@ var __startElmCafeApp__ = (() => {
   }
   function fmtDateTime(iso) {
     try {
-      return new Date(iso).toLocaleString("ar-EG-u-nu-latn", {
+      return new Date(iso).toLocaleString(locale(), {
         timeZone: "Asia/Riyadh",
         year: "numeric",
         month: "2-digit",
@@ -82,7 +96,7 @@ var __startElmCafeApp__ = (() => {
   }
   function fmtDate(iso) {
     try {
-      return new Date(iso).toLocaleDateString("ar-EG-u-nu-latn", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" });
+      return new Date(iso).toLocaleDateString(locale(), { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" });
     } catch (e) {
       return iso;
     }
@@ -178,11 +192,11 @@ var __startElmCafeApp__ = (() => {
         onBack ? h("button", { type: "button", onClick: onBack, style: circleBtn, "aria-label": "رجوع", title: "رجوع" }, h(Icon, { svg: ICONS.back, size: 19, rotate: 180 })) : h(Logo, { size: 48 }),
         h("div", { className: "topbar-heading" },
           h("div", { className: "topbar-title", title }, title),
-          session && h("div", { className:`connection-status ${connectionState || "checking"}`, role:"status", title:lastSyncAt ? `آخر تحديث ناجح: ${new Date(lastSyncAt).toLocaleString("ar-EG")}` : "لم يكتمل تحديث البيانات بعد" },
+          session && h("div", { className:`connection-status ${connectionState || "checking"}`, role:"status", title:lastSyncAt ? `آخر تحديث ناجح: ${new Date(lastSyncAt).toLocaleString(locale())}` : "لم يكتمل تحديث البيانات بعد" },
             h("span", { className:"connection-dot" }),
             h("span", null, connectionState === "connected" ? "متصل" : connectionState === "offline" ? "لا يوجد إنترنت" : connectionState === "error" ? "تعذّر التحديث" : "جارٍ التحقق"),
             h("span", { className:"connection-separator" }, "·"),
-            h("span", null, lastSyncAt ? `آخر تحديث ${new Date(lastSyncAt).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"})}` : "لم يتم التحديث")))),
+            h("span", null, lastSyncAt ? `آخر تحديث ${new Date(lastSyncAt).toLocaleTimeString(locale(),{hour:"2-digit",minute:"2-digit"})}` : "لم يتم التحديث")))),
       h("div", { style: { display: "flex", alignItems: "center", gap: 5, flexShrink: 0 } },
         session?.role === "super_admin" && notificationsReady && h("button", { type: "button", onClick: onOpenNotifications, style: { ...circleBtn, position: "relative" }, "aria-label": `الإشعارات، ${violationCount} غير مراجعة`, title: "الإشعارات" },
           h(Icon, { svg: ICONS.bell, size: 18 }), violationCount > 0 && h("span", { className: "notification-badge" }, violationCount > 9 ? "9+" : violationCount)),
@@ -201,7 +215,7 @@ var __startElmCafeApp__ = (() => {
   function tabForScreen(screen) {
     if (["home", "employee", "newEval", "history"].includes(screen)) return "home";
     if (screen === "adminEmployees") return "adminEmployees";
-    if (["adminUsers", "adminCategories", "adminCycles", "evaluatorActivity", "auditLog", "moreMenu", "trash"].includes(screen)) return "moreMenu";
+    if (["adminUsers", "adminCategories", "adminCycles", "evaluatorActivity", "auditLog", "moreMenu", "trash", "securityMonitor", "rewardsHub"].includes(screen)) return "moreMenu";
     if (screen === "reportsOverall") return "reportsOverall";
     return "adminHome";
   }
@@ -233,8 +247,18 @@ var __startElmCafeApp__ = (() => {
     )), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 34, fontWeight: 800, lineHeight: 1 } }, Math.round(pct)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)", marginTop: 2 } }, "\u0645\u0646 100")));
   }
   function Modal({ title, children, onClose, footer, compact = false, account = false }) {
+    const closeRef=useRef(onClose),dialogRef=useRef(null);closeRef.current=onClose;
+    useEffect(()=>{
+      const previousFocus=document.activeElement,body=document.body,y=window.scrollY;
+      const previous={position:body.style.position,top:body.style.top,left:body.style.left,right:body.style.right,width:body.style.width};
+      Object.assign(body.style,{position:"fixed",top:`-${y}px`,left:"0",right:"0",width:"100%"});
+      const focusables=()=>[...(dialogRef.current?.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]')||[])].filter(el=>el.getClientRects().length);
+      const keydown=e=>{if(e.key==="Escape"){e.preventDefault();closeRef.current?.();}if(e.key==="Tab"){const nodes=focusables(),first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}};
+      document.addEventListener("keydown",keydown);focusables()[0]?.focus({preventScroll:true});
+      return()=>{document.removeEventListener("keydown",keydown);Object.assign(body.style,previous);window.scrollTo(0,y);if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});};
+    },[]);
     const panel = React.createElement("div", { className: "app-modal-overlay" + (compact ? " compact" : "") + (account ? " account-modal" : ""), style: s.modalOverlay, role: "dialog", "aria-modal": true, "aria-label": title, onClick: onClose },
-      React.createElement("div", { className: "app-modal-card" + (compact ? " compact" : ""), style: s.modalCard, onClick: (e) => e.stopPropagation() },
+      React.createElement("div", { ref:dialogRef, className: "app-modal-card" + (compact ? " compact" : ""), style: s.modalCard, onClick: (e) => e.stopPropagation() },
         React.createElement("div", { className: "app-modal-heading" },
           React.createElement("strong", null, title),
           React.createElement("button", { type:"button", onClick:onClose, className:"app-modal-close", "aria-label":"إغلاق النافذة" }, React.createElement(Icon, { svg: ICONS.x, size: 19 }))),
@@ -266,7 +290,7 @@ var __startElmCafeApp__ = (() => {
       const stack = typeof error?.stack === "string" ? error.stack.split("\n").slice(0, 8).join("\n") : "";
       return { failed:true, errorText:[message, stack].filter(Boolean).join("\n") };
     }
-    componentDidCatch(error) { console.error("Elm Cafe render error", error); }
+    componentDidCatch(error) { console.error("Elm Cafe render error", error); reportClientError("render_error"); }
     retryRender() { this.setState({ failed:false, errorText:"" }); }
     async recoverSession() { try { await supabase.auth.signOut({scope:"local"}); } catch (_) {} location.replace(location.pathname + "?reload=" + Date.now()); }
     render() {
@@ -284,11 +308,14 @@ var __startElmCafeApp__ = (() => {
     return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("label", { style: { display: "block", fontSize: 13, color: "var(--ink-2)", marginBottom: 6 } }, label), children);
   }
   function Switch({ checked, onChange, label, description }) {
-    return /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => onChange(!checked), style: { display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", padding: "10px 0", cursor: "pointer", textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, marginLeft: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: "var(--ink)" } }, label), description && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)", marginTop: 1 } }, description)), /* @__PURE__ */ React.createElement("div", { style: { width: 46, height: 28, borderRadius: 999, background: checked ? "var(--forest)" : "var(--border-strong)", position: "relative", transition: "background .18s ease", flexShrink: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 22, height: 22, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, right: checked ? 21 : 3, transition: "right .18s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" } })));
+    return /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => onChange(!checked), style: { display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", padding: "10px 0", cursor: "pointer", textAlign: "start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, marginLeft: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: "var(--ink)" } }, label), description && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)", marginTop: 1 } }, description)), /* @__PURE__ */ React.createElement("div", { style: { width: 46, height: 28, borderRadius: 999, background: checked ? "var(--forest)" : "var(--border-strong)", position: "relative", transition: "background .18s ease", flexShrink: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 22, height: 22, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, right: checked ? 21 : 3, transition: "right .18s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" } })));
   }
   function Btn({ children, onClick, variant = "secondary", disabled, style, type = "button" }) {
+    const lock=useRef(false),[pending,setPending]=useState(false),[failed,setFailed]=useState(false);
+    const handle=async(event)=>{if(disabled||lock.current)return;lock.current=true;setFailed(false);try{const result=onClick?.(event);if(result&&typeof result.then==="function"){setPending(true);await result;}}catch(_){setFailed(true);reportClientError("network_error");}finally{lock.current=false;setPending(false);}};
+    const blocked=disabled||pending;
     const base = { ...s.btn, ...variant === "primary" ? s.btnPrimary : variant === "danger" ? s.btnDanger : variant === "ghost" ? s.btnGhost : {} };
-    return /* @__PURE__ */ React.createElement("button", { type, onClick, disabled, style: { ...base, ...disabled ? { opacity: 0.5, cursor: "not-allowed" } : {}, ...style } }, children);
+    return React.createElement(React.Fragment,null,React.createElement("button", { type, onClick:onClick?handle:undefined, disabled:blocked,"aria-busy":pending||undefined, style: { ...base, ...blocked ? { opacity: 0.5, cursor: "not-allowed" } : {}, ...style } },pending&&React.createElement("span",{className:"button-spinner","aria-hidden":true}), children),failed&&React.createElement("span",{role:"alert",style:{color:"var(--red)",fontSize:12}},"تعذّر إتمام العملية. تحقق من الاتصال وحاول مجددًا."));
   }
   function EmptyState({ icon, title, body }) {
     return /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "56px 24px" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 64, height: 64, borderRadius: "50%", background: "var(--forest-10)", color: "var(--forest)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" } }, icon), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 } }, title), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-3)" } }, body));
@@ -368,9 +395,9 @@ var __startElmCafeApp__ = (() => {
     const registration=await navigator.serviceWorker.getRegistration('./');
     const subscription=await registration?.pushManager?.getSubscription();
     if(!subscription)return;
-    const {error}=await supabase.from('push_subscriptions').delete().eq('endpoint',subscription.endpoint);
+    const {data,error}=await supabase.from('push_subscriptions').delete().eq('endpoint',subscription.endpoint).select('endpoint');
+    if(error||!data?.some(row=>row.endpoint===subscription.endpoint))throw error||new Error('Unable to confirm subscription deletion');
     await subscription.unsubscribe();
-    if(error)throw error;
   }
   async function mutateRowsByIds(table, operation, ids, changes) {
     const rows=[];
@@ -433,6 +460,7 @@ var __startElmCafeApp__ = (() => {
     if (error) throw error;
     return (data || []).filter((profile) => profile && profile.id);
   }
+  function OfflineBanner(){const [online,setOnline]=useState(navigator.onLine);useEffect(()=>{const update=()=>setOnline(navigator.onLine);window.addEventListener("online",update);window.addEventListener("offline",update);return()=>{window.removeEventListener("online",update);window.removeEventListener("offline",update);};},[]);return !online&&React.createElement("aside",{className:"offline-banner",role:"status"},"لا يوجد اتصال. الحفظ وتحديث البيانات يحتاجان الإنترنت.");}
   function App() {
     const [language, setLanguage] = useState(() => window.ElmI18n?.getLanguage() || 'ar');
     useEffect(() => {
@@ -460,6 +488,7 @@ var __startElmCafeApp__ = (() => {
       return !error && data===true;
     }
     const [screen, setScreen] = useState("login");
+    currentScreen=screen;
     const [stack, setStack] = useState([]);
     const [ctx, setCtx] = useState({});
     const [toast, setToast] = useState(null);
@@ -750,9 +779,8 @@ var __startElmCafeApp__ = (() => {
         clearTimeout(refreshTimer);
       };
     },[session,refreshing]);
-    async function addAudit(action, target, details = "") {
-      const { data } = await supabase.from("audit_log").insert({ actor: session ? session.name : "\u0627\u0644\u0646\u0638\u0627\u0645", action, target, details }).select().single();
-      if (data) setAudit((prev) => [data, ...prev]);
+    async function addAudit(action,target,details=""){
+      try{const {data,error}=await supabase.from("audit_log").insert({actor:session?.name||"النظام",action,target,details}).select().single();if(error||!data){reportClientError("network_error");return false;}setAudit(prev=>[data,...prev]);return true;}catch(_){reportClientError("network_error");return false;}
     }
     function displayAuditTarget(target) {
       if (!target || target === "-") return "";
@@ -786,7 +814,7 @@ var __startElmCafeApp__ = (() => {
       if (content) content.scrollTop=0;
     }, [screen,session?.id]);
     useLayoutEffect(() => {
-      if (!session) return;
+      if (!session || booting) return;
       const header = document.querySelector(".app-topbar");
       if (!header) return;
       const applyTopbarSpace = () => {
@@ -803,7 +831,7 @@ var __startElmCafeApp__ = (() => {
         window.removeEventListener("resize", applyTopbarSpace);
         window.removeEventListener("orientationchange", applyTopbarSpace);
       };
-    }, [session]);
+    }, [session, booting]);
     function goBack() {
       const doNav = () => {
         setStack((s2) => {
@@ -905,15 +933,15 @@ var __startElmCafeApp__ = (() => {
       const b = ratingBands.find((b2) => !b2.deleted_at && score >= b2.min && score <= b2.max);
       return b ? b.label : "-";
     }
-    if (booting) return React.createElement("div", { className: "initial-splash" }, React.createElement(Logo, { size: 112 }), React.createElement("span", { className: "splash-pulse" }), React.createElement("span", null, "لحظات..."));
+    if (booting) return React.createElement("div", { className: "initial-splash" }, React.createElement("img", {src:LOGO_SRC,alt:"ELM CAFE"}), React.createElement("span", { className: "splash-pulse", "aria-hidden":true }));
     return /* @__PURE__ */ React.createElement("div", { dir: language === "en" ? "ltr" : "rtl" }, !session && screen !== "resetPassword" && /* @__PURE__ */ React.createElement(
       LoginScreen,
       {
-        onLogin: async (username, password) => {
+        onLogin: async (username, password, captchaToken) => {
           const uname = username.trim().toLowerCase();
           const { data: lookup } = await supabase.from("user_lookup").select("email").eq("username", uname).maybeSingle();
           const email = lookup ? lookup.email : `${uname}@${EMAIL_DOMAIN}`;
-          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password, options:{captchaToken} });
           if (error) return "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629";
           const prof = await loadSessionProfile(data.user);
           if (!prof) return "\u0627\u0644\u062D\u0633\u0627\u0628 \u063A\u064A\u0631 \u0645\u0641\u0639\u0651\u0644 \u0623\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F";
@@ -927,11 +955,11 @@ var __startElmCafeApp__ = (() => {
         },
         theme,
         onToggleTheme: toggleTheme,
-        onReset: async (username) => {
+        onReset: async (username, captchaToken) => {
           const uname = username.trim().toLowerCase();
           const { data: lookup } = await supabase.from("user_lookup").select("email").eq("username", uname).maybeSingle();
           const email = lookup ? lookup.email : `${uname}@${EMAIL_DOMAIN}`;
-          const { error } = await supabase.auth.resetPasswordForEmail(email);
+          const { error } = await supabase.auth.resetPasswordForEmail(email,{captchaToken});
           if (error) throw error;
         }
       }
@@ -967,7 +995,7 @@ var __startElmCafeApp__ = (() => {
         connectionState,
         lastSyncAt,
       }
-    ), /* @__PURE__ */ React.createElement("main", { className: "app-main-content" + (["moreMenu","auditLog"].includes(screen) ? " compact-admin-page" : ""), key: screen + "-" + (ctx.employeeId || ""), style: { ...session?.role === "super_admin" ? { ...s.body, paddingBottom: "calc(128px + env(safe-area-inset-bottom, 0px))" } : s.body, animation: "fadeIn .28s cubic-bezier(.2,.75,.25,1)" } }, screen === "home" && /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("main", { className: "app-main-content", key: screen + "-" + (ctx.employeeId || ""), style: { ...session?.role === "super_admin" ? { ...s.body, paddingBottom: "calc(128px + env(safe-area-inset-bottom, 0px))" } : s.body, animation: "fadeIn .28s cubic-bezier(.2,.75,.25,1)" } }, screen === "home" && /* @__PURE__ */ React.createElement(
       EvaluatorHome,
       {
         employees: employees.filter((e) => !e.archived && !e.deleted_at),
@@ -1038,13 +1066,14 @@ var __startElmCafeApp__ = (() => {
           const { data, error } = await supabase.from("evaluations").update(patch).eq("id", evId).select("id,status");
           if (error || !data?.some(row => row.id === evId && row.status === "cancelled")) {
             showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u0625\u0644\u063A\u0627\u0621: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
-            return;
+            return false;
           }
           setEvaluations((prev) => prev.map((e) => e.id === evId ? { ...e, ...patch } : e));
           const cancelled = evaluations.find(e => e.id === evId);
           const employeeName = employees.find(e => e.id === cancelled?.employee_id)?.name || "موظف";
           await addAudit("إلغاء تقييم", `${employeeName} — ${cancelled?.category_name || "تقييم"}`, reason || "");
           showToast("\u062A\u0645 \u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u0642\u064A\u064A\u0645");
+          return true;
         }
       }
     ), screen === "adminHome" && /* @__PURE__ */ React.createElement(
@@ -1067,7 +1096,17 @@ var __startElmCafeApp__ = (() => {
     ), screen === "adminEmployees" && /* @__PURE__ */ React.createElement(
       AdminEmployees,
       {
-        employees,
+        employees:employees.filter(e=>!e.deleted_at),
+        canEdit:session?.role==="super_admin",
+        onUpdate:async(id,patch)=>{
+          if(session?.role!=="super_admin")return false;
+          const {data,error}=await supabase.rpc("admin_update_employee",{p_id:id,p_name:patch.name,p_name_en:patch.name_en||"",p_employee_code:patch.employee_code,p_profession:patch.profession});
+          const row=Array.isArray(data)?data[0]:data;
+          if(error||row?.id!==id||row.name!==patch.name||String(row.employee_code)!==patch.employee_code||(row.name_en||"")!==(patch.name_en||"")||row.profession!==patch.profession){showToast("تعذّر تعديل الموظف. راجع البيانات والصلاحيات وإعداد التحديث.","error");return false;}
+          setEmployees(prev=>prev.map(e=>e.id===id?row:e));
+          try{await addAudit("تعديل بيانات موظف",id);}catch(_){}
+          showToast("تم تعديل بيانات الموظف");return true;
+        },
         onAdd: async (emp) => {
           const { data, error } = await supabase.from("employees").insert(emp).select().single();
           if (error) {
@@ -1083,22 +1122,24 @@ var __startElmCafeApp__ = (() => {
           const { data, error } = await supabase.from("employees").update({ archived }).eq("id", id).select("id,archived");
           if (error || !data?.some(row => row.id === id && row.archived === archived)) {
             showToast(`\u062A\u0639\u0630\u0651\u0631\u062A \u0627\u0644\u0639\u0645\u0644\u064A\u0629: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
-            return;
+            return false;
           }
           setEmployees((prev) => prev.map((e) => e.id === id ? { ...e, archived } : e));
           await addAudit(archived ? "\u0623\u0631\u0634\u0641\u0629 \u0645\u0648\u0638\u0641" : "\u0625\u0639\u0627\u062F\u0629 \u062A\u0641\u0639\u064A\u0644 \u0645\u0648\u0638\u0641", id);
           showToast(archived ? "\u062A\u0645\u062A \u0627\u0644\u0623\u0631\u0634\u0641\u0629" : "\u062A\u0645\u062A \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0641\u0639\u064A\u0644");
+          return true;
         },
         onDelete: async (id, name) => {
           const { data, error } = await supabase.from("employees").delete().eq("id", id).select("id");
           if (error || !data?.some(row => row.id === id)) {
             showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u062D\u0630\u0641: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
-            return;
+            return false;
           }
           setEmployees((prev) => prev.filter((e) => e.id !== id));
           setEvaluations((prev) => prev.filter((e) => e.employee_id !== id));
           await addAudit("\u062D\u0630\u0641 \u0645\u0648\u0638\u0641 \u0646\u0647\u0627\u0626\u064A\u064B\u0627", name);
           showToast("\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0645\u0648\u0638\u0641 \u0648\u0643\u0644 \u062A\u0642\u064A\u064A\u0645\u0627\u062A\u0647 \u0646\u0647\u0627\u0626\u064A\u064B\u0627");
+          return true;
         }
       }
     ), screen === "adminUsers" && (isOwner ? /* @__PURE__ */ React.createElement(
@@ -1175,6 +1216,7 @@ var __startElmCafeApp__ = (() => {
     ) : React.createElement(EmptyState,{icon:React.createElement(Icon,{svg:ICONS.lock,size:28}),title:"إدارة الحسابات لصاحب التطبيق فقط",body:"لا يمكنك إدارة الحسابات من هذا الحساب."})), screen === "adminCategories" && /* @__PURE__ */ React.createElement(
       AdminCategories,
       {
+        canEditNames:session?.role==="super_admin",
         ratingBands: ratingBands.filter(b=>!b.deleted_at),
         categories: categories.filter(c=>!c.deleted_at),
         onAddCategory: async (cat) => {
@@ -1189,14 +1231,15 @@ var __startElmCafeApp__ = (() => {
           return true;
         },
         onUpdateCategory: async (id, patch) => {
-          const { data, error } = await supabase.from("categories").update(patch).eq("id", id).select("id");
-          if (error || !data?.some(row => row.id === id)) {
+          const { data, error } = await supabase.from("categories").update(patch).eq("id", id).select(["id",...Object.keys(patch)].join(","));
+          if (error || !data?.some(row => row.id === id && Object.entries(patch).every(([key,value])=>row[key]===value))) {
             showToast(`\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u062A\u062D\u062F\u064A\u062B: ${error?.message || "راجع صلاحيات قاعدة البيانات"}`, "error");
-            return;
+            return false;
           }
           setCategories((prev) => prev.map((c) => c.id === id ? { ...c, ...patch } : c));
           await addAudit("\u062A\u0639\u062F\u064A\u0644 \u062A\u0635\u0646\u064A\u0641 \u062A\u0642\u064A\u064A\u0645", id, JSON.stringify(patch));
           showToast("\u062A\u0645 \u0627\u0644\u062A\u062D\u062F\u064A\u062B \u2014 \u0644\u0646 \u064A\u0624\u062B\u0631 \u0639\u0644\u0649 \u0627\u0644\u062A\u0642\u064A\u064A\u0645\u0627\u062A \u0627\u0644\u0633\u0627\u0628\u0642\u0629");
+          return true;
         },
         onArchiveCategory: async (id) => {
           const { data, error } = await supabase.from("categories").update({deleted_at:nowISO()}).eq("id",id).is("deleted_at",null).select("id,deleted_at").single();
@@ -1311,9 +1354,9 @@ var __startElmCafeApp__ = (() => {
         setRewardCatalog(prev=>prev.map(r=>r.id===id?data:r));try{await addAudit("تعديل مكافأة",data.name);}catch(_){}
         showToast("تم تحديث المكافأة");return true;
       },
-      onRedeem:async(employeeId,rewardId)=>{
+      onRedeem:async(employeeId,rewardId,requestId)=>{
         if(!rewardsReady){showToast("شغّل ملف SQL الخاص بالمكافآت أولًا","error");return false;}
-        const {data,error}=await supabase.rpc("redeem_employee_reward",{p_employee_id:employeeId,p_reward_id:rewardId});
+        const {data,error}=await supabase.rpc("redeem_employee_reward_once",{p_employee_id:employeeId,p_reward_id:rewardId,p_request_id:requestId});
         if(error){showToast(error.message.includes("Insufficient positive reward points")?"رصيد النقاط الإيجابية غير كافٍ":"تعذّر تسجيل الصرف. راجع البيانات وحاول مرة أخرى.","error");return false;}
         const redemption=Array.isArray(data)?data[0]:data;
         if(redemption)setRewardRedemptions(prev=>[redemption,...prev]);
@@ -1334,7 +1377,7 @@ var __startElmCafeApp__ = (() => {
         try{await addAudit("اعتماد فائز الدورة",payload.cycle_name,JSON.stringify({employee_name:payload.employee_name,score:payload.score,evaluation_count:payload.evaluation_count,tied_employee_count:payload.tied_employee_count}));}catch(_){}
         showToast("تم حفظ الفائز: "+payload.employee_name);return true;
       }
-    }),    ), screen === "evaluatorActivity" && /* @__PURE__ */ React.createElement(EvaluatorActivityScreen, { evaluations, activeCycle, cycles: cycles.filter((c) => !c.deleted_at) }), screen === "auditLog" && /* @__PURE__ */ React.createElement(
+    }), screen === "evaluatorActivity" && /* @__PURE__ */ React.createElement(EvaluatorActivityScreen, { evaluations, activeCycle, cycles: cycles.filter((c) => !c.deleted_at) }), screen === "auditLog" && /* @__PURE__ */ React.createElement(
       AuditLogScreen,
       {
         audit: audit.filter((a) => !a.deleted_at),
@@ -1446,7 +1489,7 @@ var __startElmCafeApp__ = (() => {
           return true;
         }
       }
-    ), screen === "moreMenu" && /* @__PURE__ */ React.createElement(MoreMenuScreen, { onGo: (scr) => goto(scr), isOwner })), session?.role === "super_admin" && /* @__PURE__ */ React.createElement(BottomNav, { activeScreen: screen, onSelect: gotoTab }), /* @__PURE__ */ React.createElement(Toast, { toast }), (pullState || refreshing) && React.createElement("div", { className:"pull-status", role:"status" }, refreshing ? "جارٍ تحديث البيانات…" : pullState === "ready" ? "اترك الشاشة للتحديث" : "اسحب للتحديث"), confirmLogout && React.createElement(Modal, { title:"تسجيل الخروج", onClose:()=>setConfirmLogout(false), footer:React.createElement(React.Fragment,null,React.createElement(Btn,{variant:"primary",onClick:()=>{setConfirmLogout(false);logout();}},"تأكيد الخروج"),React.createElement(Btn,{variant:"ghost",onClick:()=>setConfirmLogout(false)},"البقاء")) }, "سيتم إغلاق جلسة حسابك على هذا الجهاز."), pendingNav && /* @__PURE__ */ React.createElement(Modal, { compact:true, title: "\u0644\u062F\u064A\u0643 \u062A\u063A\u064A\u064A\u0631\u0627\u062A \u063A\u064A\u0631 \u0645\u062D\u0641\u0648\u0638\u0629", onClose: () => setPendingNav(null), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "danger", onClick: () => {
+    ), screen === "securityMonitor" && isOwner && React.createElement(SecurityMonitor), screen === "moreMenu" && /* @__PURE__ */ React.createElement(MoreMenuScreen, { onGo: (scr) => goto(scr), isOwner }))), session?.role === "super_admin" && /* @__PURE__ */ React.createElement(BottomNav, { activeScreen: screen, onSelect: gotoTab }), /* @__PURE__ */ React.createElement(Toast, { toast }), (pullState || refreshing) && React.createElement("div", { className:"pull-status", role:"status" }, refreshing ? "جارٍ تحديث البيانات…" : pullState === "ready" ? "اترك الشاشة للتحديث" : "اسحب للتحديث"), confirmLogout && React.createElement(Modal, { title:"تسجيل الخروج", onClose:()=>setConfirmLogout(false), footer:React.createElement(React.Fragment,null,React.createElement(Btn,{variant:"primary",onClick:()=>{setConfirmLogout(false);logout();}},"تأكيد الخروج"),React.createElement(Btn,{variant:"ghost",onClick:()=>setConfirmLogout(false)},"البقاء")) }, "سيتم إغلاق جلسة حسابك على هذا الجهاز."), pendingNav && /* @__PURE__ */ React.createElement(Modal, { compact:true, title: "\u0644\u062F\u064A\u0643 \u062A\u063A\u064A\u064A\u0631\u0627\u062A \u063A\u064A\u0631 \u0645\u062D\u0641\u0648\u0638\u0629", onClose: () => setPendingNav(null), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "danger", onClick: () => {
       const f = pendingNav;
       setPendingNav(null);
       f();
@@ -1511,6 +1554,7 @@ var __startElmCafeApp__ = (() => {
         return "\u0633\u062C\u0644 \u0627\u0644\u062A\u062F\u0642\u064A\u0642";
       case "moreMenu":
         return "\u0627\u0644\u0645\u0632\u064A\u062F";
+      case "securityMonitor": return "مراقبة النظام";
       case "trash":
         return "\u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A";
       default:
@@ -1518,6 +1562,18 @@ var __startElmCafeApp__ = (() => {
     }
   }
   function LoginScreen({ onLogin, onReset, theme, onToggleTheme }) {
+    const captchaKey=window.ELM_PUBLIC_CONFIG?.turnstileSiteKey||"";
+    const [captchaToken,setCaptchaToken]=useState("");
+    const captchaRef=useRef(null),captchaId=useRef(null),attempts=useRef([]);
+    useEffect(()=>{
+      if(!captchaKey)return;
+      let cancelled=false;
+      const render=()=>{if(cancelled||!captchaRef.current)return;captchaId.current=window.turnstile.render(captchaRef.current,{sitekey:captchaKey,callback:setCaptchaToken,"expired-callback":()=>setCaptchaToken(""),"error-callback":()=>{setCaptchaToken("");setErr("تعذّر التحقق الأمني. أعد المحاولة.");}});};
+      let script=document.querySelector('script[data-elm-captcha]');
+      if(window.turnstile)render();else{if(!script){script=document.createElement("script");script.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";script.dataset.elmCaptcha="1";script.async=true;document.head.appendChild(script);}script.addEventListener("load",render);}
+      return()=>{cancelled=true;script?.removeEventListener("load",render);if(captchaId.current!=null)window.turnstile?.remove(captchaId.current);};
+    },[captchaKey]);
+    function resetCaptcha(){if(captchaKey){setCaptchaToken("");if(captchaId.current!=null)window.turnstile?.reset(captchaId.current);}}
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [showPw, setShowPw] = useState(false);
@@ -1528,34 +1584,42 @@ var __startElmCafeApp__ = (() => {
     async function submit(e) {
       e.preventDefault();
       if (submitLock.current) return;
+      attempts.current=attempts.current.filter(t=>Date.now()-t<60000);
+      if(attempts.current.length>=5){setErr("محاولات كثيرة. انتظر دقيقة ثم حاول مجددًا.");return;}
+      if(captchaKey&&!captchaToken){setErr("أكمل التحقق الأمني أولًا.");return;}
       submitLock.current = true;
       setErr("");
       setBusy(true);
       try {
-        const errMsg = await onLogin(username, password);
-        if (errMsg) setErr(errMsg);
+        const errMsg = await onLogin(username, password, captchaToken);
+        if (errMsg) {attempts.current.push(Date.now());setErr(errMsg);}else attempts.current=[];
       } catch (_) {
         setErr(navigator.onLine ? "تعذّر التحقق من الحساب. حاول مرة أخرى." : "لا يوجد اتصال بالإنترنت.");
-      } finally { setBusy(false); submitLock.current = false; }
+      } finally { setBusy(false); submitLock.current = false; resetCaptcha(); }
     }
     async function reset() {
       if (!username.trim()) {
         setErr("\u0627\u0643\u062A\u0628 \u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u0623\u0648\u0644\u064B\u0627");
         return;
       }
-      try { await onReset(username); }
-      catch (_) { setErr("تعذّر طلب رابط الاستعادة. تحقق من الإنترنت وحاول مرة أخرى."); return; }
+      if(submitLock.current)return;
+      if(captchaKey&&!captchaToken){setErr("أكمل التحقق الأمني أولًا.");return;}
+      submitLock.current=true;setBusy(true);
+      try { await onReset(username,captchaToken); }
+      catch (_) { setErr("تعذّر طلب رابط الاستعادة. تحقق من الإنترنت وحاول مرة أخرى."); return; } finally {submitLock.current=false;setBusy(false);resetCaptcha();}
       setResetMsg("\u0644\u0648 \u0627\u0644\u062D\u0633\u0627\u0628 \u0645\u0648\u062C\u0648\u062F\u060C \u0647\u064A\u0648\u0635\u0644\u0643 \u0631\u0627\u0628\u0637 \u0625\u0639\u0627\u062F\u0629 \u062A\u0639\u064A\u064A\u0646 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0639\u0644\u0649 \u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0645\u0633\u062C\u0644.");
     }
-    return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 20px", background: "radial-gradient(ellipse 70% 50% at 50% 0%, var(--forest-10), transparent)", position: "relative", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "login-theme-button", onClick: onToggleTheme, "aria-label": theme === "dark" ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الليلي" }, /* @__PURE__ */ React.createElement(Icon, { svg: theme === "dark" ? ICONS.sun : ICONS.moon, size: 18 })), /* @__PURE__ */ React.createElement("button", { type:"button", className:"login-language-button", onClick:()=>window.ElmI18n?.setLanguage(window.ElmI18n.getLanguage()==="ar"?"en":"ar"), "aria-label":"Switch language" }, window.ElmI18n?.getLanguage()==="ar"?"EN":"ع"), /* @__PURE__ */ React.createElement("img", { src: LOGO_SRC, alt: "", "aria-hidden": "true", style: { position: "absolute", width: 520, height: "auto", opacity: 0.05, top: "-8%", right: "-18%", transform: "rotate(8deg)", pointerEvents: "none", filter: "grayscale(1)" } }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 96, height: 96, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Logo, { size: 108 })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em", textAlign: "center" } }, "ELM CAFE"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-3)", marginTop: 5, marginBottom: 30, textAlign: "center" } }, "\u0646\u0638\u0627\u0645 \u062A\u0642\u064A\u064A\u0645 \u0623\u062F\u0627\u0621 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646"), /* @__PURE__ */ React.createElement("form", { onSubmit: submit, style: { ...s.card, maxWidth: "100%" } }, /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: username, onChange: (e) => setUsername(e.target.value), autoCapitalize: "none", autoCorrect: "off", autoFocus: true })), /* @__PURE__ */ React.createElement(Field, { label: "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("input", { type: showPw ? "text" : "password", style: { ...s.input, paddingLeft: 42 }, value: password, onChange: (e) => setPassword(e.target.value) }), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowPw((v) => !v), style: { position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 6, color: "var(--ink-3)", display: "flex" }, "aria-label": "\u0625\u0638\u0647\u0627\u0631 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" }, /* @__PURE__ */ React.createElement(Icon, { svg: showPw ? ICONS.eyeOff : ICONS.eye, size: 17 })))), err && /* @__PURE__ */ React.createElement("div", { style: s.errText }, err), resetMsg && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--forest)", marginBottom: 10 } }, resetMsg), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", type: "submit", disabled: busy, style: { width: "100%", marginTop: 8 } }, busy ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062F\u062E\u0648\u0644\u2026" : "\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062F\u062E\u0648\u0644"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: reset, style: { background: "none", border: "none", color: "var(--ink-3)", fontSize: 12, marginTop: 16, cursor: "pointer", width: "100%" } }, "\u0646\u0633\u064A\u062A \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631\u061F"))));
+    return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 20px", background: "radial-gradient(ellipse 70% 50% at 50% 0%, var(--forest-10), transparent)", position: "relative", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "login-theme-button", onClick: onToggleTheme, "aria-label": theme === "dark" ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الليلي" }, /* @__PURE__ */ React.createElement(Icon, { svg: theme === "dark" ? ICONS.sun : ICONS.moon, size: 18 })), /* @__PURE__ */ React.createElement("button", { type:"button", className:"login-language-button", onClick:()=>window.ElmI18n?.setLanguage(window.ElmI18n.getLanguage()==="ar"?"en":"ar"), "aria-label":"Switch language" }, window.ElmI18n?.getLanguage()==="ar"?"EN":"ع"), /* @__PURE__ */ React.createElement("img", { src: LOGO_SRC, alt: "", "aria-hidden": "true", style: { position: "absolute", width: 520, height: "auto", opacity: 0.05, top: "-8%", right: "-18%", transform: "rotate(8deg)", pointerEvents: "none", filter: "grayscale(1)" } }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 96, height: 96, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Logo, { size: 108 })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em", textAlign: "center" } }, "ELM CAFE"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-3)", marginTop: 5, marginBottom: 30, textAlign: "center" } }, "\u0646\u0638\u0627\u0645 \u062A\u0642\u064A\u064A\u0645 \u0623\u062F\u0627\u0621 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646"), /* @__PURE__ */ React.createElement("form", { onSubmit: submit, style: { ...s.card, maxWidth: "100%" } }, /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: username, onChange: (e) => setUsername(e.target.value), autoCapitalize: "none", autoCorrect: "off", autoFocus: true })), /* @__PURE__ */ React.createElement(Field, { label: "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("input", { type: showPw ? "text" : "password", style: { ...s.input, paddingLeft: 42 }, value: password, onChange: (e) => setPassword(e.target.value) }), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowPw((v) => !v), style: { position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 6, color: "var(--ink-3)", display: "flex" }, "aria-label": "\u0625\u0638\u0647\u0627\u0631 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" }, /* @__PURE__ */ React.createElement(Icon, { svg: showPw ? ICONS.eyeOff : ICONS.eye, size: 17 })))), captchaKey && React.createElement("div",{ref:captchaRef,style:{marginBlock:12}}), err && /* @__PURE__ */ React.createElement("div", { style: s.errText }, err), resetMsg && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--forest)", marginBottom: 10 } }, resetMsg), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", type: "submit", disabled: busy, style: { width: "100%", marginTop: 8 } }, busy ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062F\u062E\u0648\u0644\u2026" : "\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062F\u062E\u0648\u0644"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: reset, style: { background: "none", border: "none", color: "var(--ink-3)", fontSize: 12, marginTop: 16, cursor: "pointer", width: "100%" } }, "\u0646\u0633\u064A\u062A \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631\u061F"))));
   }
   function ResetPasswordScreen({ onSubmit }) {
     const [pw, setPw] = useState("");
     const [pw2, setPw2] = useState("");
     const [err, setErr] = useState("");
     const [busy, setBusy] = useState(false);
+    const resetLock=useRef(false);
     async function submit(e) {
       e.preventDefault();
+      if(resetLock.current)return;
       setErr("");
       if (pw.length < 6) {
         setErr("\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 6 \u0623\u062D\u0631\u0641 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644");
@@ -1565,10 +1629,8 @@ var __startElmCafeApp__ = (() => {
         setErr("\u0643\u0644\u0645\u062A\u0627 \u0627\u0644\u0645\u0631\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0637\u0627\u0628\u0642\u062A\u064A\u0646");
         return;
       }
-      setBusy(true);
-      const errMsg = await onSubmit(pw);
-      setBusy(false);
-      if (errMsg) setErr(errMsg);
+      resetLock.current=true;setBusy(true);
+      try{const errMsg = await onSubmit(pw);if (errMsg) setErr(errMsg);}catch(_){setErr("تعذّر الاتصال. بياناتك لم تُمسح.");}finally{resetLock.current=false;setBusy(false);}
     }
     return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 20px", background: "radial-gradient(ellipse 70% 50% at 50% 0%, var(--forest-10), transparent)" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement(Logo, { size: 54 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 800, marginTop: 14 } }, "\u062A\u0639\u064A\u064A\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u062C\u062F\u064A\u062F\u0629"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-3)", marginTop: 4 } }, "\u0627\u062E\u062A\u0631 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u062C\u062F\u064A\u062F\u0629 \u0644\u062D\u0633\u0627\u0628\u0643")), /* @__PURE__ */ React.createElement("form", { onSubmit: submit, style: { ...s.card, maxWidth: 340 } }, /* @__PURE__ */ React.createElement(Field, { label: "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629" }, /* @__PURE__ */ React.createElement("input", { type: "password", style: s.input, value: pw, onChange: (e) => setPw(e.target.value), autoFocus: true })), /* @__PURE__ */ React.createElement(Field, { label: "\u062A\u0623\u0643\u064A\u062F \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" }, /* @__PURE__ */ React.createElement("input", { type: "password", style: s.input, value: pw2, onChange: (e) => setPw2(e.target.value) })), err && /* @__PURE__ */ React.createElement("div", { style: s.errText }, err), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", type: "submit", disabled: busy, style: { width: "100%", marginTop: 8 } }, busy ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631")));
   }
@@ -1576,7 +1638,7 @@ var __startElmCafeApp__ = (() => {
     const h = React.createElement;
     const [query, setQuery] = useState("");
     const current = activeCycle ? evaluations.filter(e => e.cycle_id === activeCycle.id && e.status === "active") : [];
-    const filtered = employees.filter(e => (e.name || "").includes(query) || String(e.employee_code || "").includes(query));
+    const filtered = employees.filter(e => matches(e.name,query) || String(e.employee_code || "").includes(query));
     return h("div", { className:"work-screen evaluation-hub" },
       h("header", { className:"evaluation-hub-head" },
         h("span", { className:"eyebrow" }, "تقييمات الفريق"),
@@ -1588,7 +1650,7 @@ var __startElmCafeApp__ = (() => {
           h("input", { className:"modern-search", value:query, onChange:e=>setQuery(e.target.value), placeholder:"بحث اختياري بالاسم أو الرقم", "aria-label":"بحث اختياري عن موظف" }),
           filtered.length ? h("div", { className:"quick-evaluation-grid" }, filtered.map(e => h("div", { key:e.id, className:"quick-evaluation-item" },
             h("button", { type:"button", className:"quick-evaluation-pick", onClick:()=>onOpen(e) },
-              h("span", { className:"person-avatar", style:{background:avatarColor(e.name).bg,color:avatarColor(e.name).fg} }, e.name.trim().slice(0,1)),
+              h("span", { className:"person-avatar", style:{background:avatarColor(e.name).bg,color:avatarColor(e.name).fg} }, tr(e.name).trim().slice(0,1)),
               h("span", null, h("strong", null, e.name), h("small", null, e.profession || "موظف")),
               h(Icon, { svg:ICONS.plus, size:17 })),
             h("button", { type:"button", className:"quick-evaluation-profile", onClick:()=>onProfile(e), "aria-label":`فتح ملف ${e.name}` }, "الملف")))) : h("p", null, "لا يوجد موظف بهذا الاسم."))) : h(EmptyState, { icon:h(Icon,{svg:ICONS.clock,size:28}), title:"لا توجد دورة نشطة", body:"افتح دورة تقييم من مركز التحكم." }));
@@ -1600,7 +1662,7 @@ var __startElmCafeApp__ = (() => {
     const [query,setQuery]=useState("");
     useEffect(()=>setSelectedId(initialEvaluationId || null),[initialEvaluationId]);
     const all=activeCycle?evaluations.filter(e=>e.cycle_id===activeCycle.id&&e.status==="active").slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)):[];
-    const filtered=all.filter(e=>!query || (e.category_name||"").includes(query) || (employees.find(emp=>emp.id===e.employee_id)?.name||"").includes(query));
+    const filtered=all.filter(e=>!query || (e.category_name||"").includes(query) || matches(employees.find(emp=>emp.id===e.employee_id)?.name,query));
     const selected=all.find(e=>e.id===selectedId);
     return h("div",{className:"evaluation-log-screen"},
       h("header",{className:"evaluation-log-heading"},h("span",{className:"eyebrow"},activeCycle?.name||"الدورة الحالية"),h("h1",null,"سجل التقييمات"),h("p",null,"كل التقييمات المسجلة في الدورة، الأحدث أولًا.")),
@@ -1660,7 +1722,7 @@ var __startElmCafeApp__ = (() => {
     }, {})).sort((a,b) => b.count - a.count).slice(0, 5);
     return h("div", { className:"employee-profile" },
       h("section", { className:"profile-hero" },
-        h("span", { className:"person-avatar", style:{ background:avatarColor(employee.name).bg, color:avatarColor(employee.name).fg } }, employee.name.trim().slice(0,1)),
+        h("span", { className:"person-avatar", style:{ background:avatarColor(employee.name).bg, color:avatarColor(employee.name).fg } }, employetr(e.name).trim().slice(0,1)),
         h("span", { className:"eyebrow" }, "لوحة الموظف"), h("h1", null, employee.name),
         h("p", null, employee.profession || "موظف", " · رقم ", employee.employee_code),
         h("div", { className:"profile-score" }, h("strong", null, score === null ? "—" : Math.round(score)), h("span", null, score === null ? "لم يُقيّم في الدورة الحالية" : `${ratingFor(score)} · من 100`)),
@@ -1679,11 +1741,11 @@ var __startElmCafeApp__ = (() => {
         cycleRows.length ? h("div",{className:"cycle-comparison"},cycleRows.map(row => h("div",{key:row.cycle.id,className:"cycle-comparison-row"},h("span",null,row.cycle.name),h("div",{className:"comparison-track"},h("span",{style:{width:`${Math.min(100,Math.max(0,row.score))}%`}})),h("strong",null,Math.round(row.score)),h("small",null,row.count," تقييم")))) : h("div",{className:"dash-empty"},"لا توجد دورات بها تقييمات لهذا الموظف.")),
       h("section", { className:"dashboard-panel" },h("div",{className:"section-heading"},h("div",null,h("span",{className:"eyebrow"},"الخط الزمني"),h("h2",null,"آخر التقييمات")),h("button",{type:"button",className:"text-action",onClick:onHistory},"عرض الكل")),
         recent.length ? h("div",{className:"profile-history"},recent.map(e => h(EvalRow,{key:e.id,e}))) : h("div",{className:"dash-empty"},"لا توجد تقييمات مسجلة بعد.")),
-      certificateOpen && chosenCertificateCycle && h("div",{className:"certificate-overlay"},h("section",{className:"certificate-print",dir:"rtl"},h("button",{type:"button",className:"certificate-close no-print",onClick:()=>setCertificateOpen(false),"aria-label":"إغلاق"},"×"),h("div",{className:"certificate-frame"},h("img",{src:LOGO_SRC,alt:"ELM CAFE",className:"certificate-logo"}),h("span",{className:"certificate-brand"},"ELM CAFE"),h("span",{className:"certificate-eyebrow"},"شهادة تقدير شهرية"),h("h1",null,"تُمنح هذه الشهادة إلى"),h("h2",null,employee.name),h("p",{className:"certificate-profession"},employee.profession||"موظف"," · رقم الموظف ",employee.employee_code||"—"),h("p",{className:"certificate-copy"},"تقديرًا لالتزامه ومساهمته الإيجابية خلال دورة التقييم، واعترافًا بجهده في دعم فريق العمل."),h("div",{className:"certificate-period"},h("span",null,chosenCertificateCycle.name),h("small",null,fmtDate(chosenCertificateCycle.start_date)," — ",fmtDate(chosenCertificateCycle.end_date))),h("div",{className:"certificate-stats"},h("div",null,h("strong",null,certificatePoints),h("small",null,"نقطة إيجابية")),h("div",null,h("strong",null,certificatePositive.length),h("small",null,"إنجازًا إيجابيًا")),h("div",null,h("strong",null,Math.round(computeScore(employee.id,chosenCertificateCycle.id))," / 100"),h("small",null,"النتيجة النهائية"))),h("footer",{className:"certificate-signature"},h("span",null,h("small",null,"تاريخ الإصدار"),h("strong",null,new Date().toLocaleDateString("ar-EG"))),h("span",null,h("i",null,managerName),h("small",null,"إدارة ELM CAFE"))),h("div",{className:"certificate-actions no-print"},h("button",{type:"button",onClick:()=>setTimeout(()=>window.print(),120)},"طباعة / حفظ PDF"),h("small",{className:"certificate-share-hint"},"احفظ الشهادة بصيغة PDF، ثم أرفقها من ملفات الجهاز في واتساب."),h("button",{type:"button",onClick:()=>setCertificateOpen(false)},"إغلاق"))))));
+      certificateOpen && chosenCertificateCycle && h("div",{className:"certificate-overlay"},h("section",{className:"certificate-print",dir:window.ElmI18n?.getLanguage()==="en"?"ltr":"rtl"},h("button",{type:"button",className:"certificate-close no-print",onClick:()=>setCertificateOpen(false),"aria-label":"إغلاق"},"×"),h("div",{className:"certificate-frame"},h("img",{src:LOGO_SRC,alt:"ELM CAFE",className:"certificate-logo"}),h("span",{className:"certificate-brand"},"ELM CAFE"),h("span",{className:"certificate-eyebrow"},"شهادة تقدير شهرية"),h("h1",null,"تُمنح هذه الشهادة إلى"),h("h2",null,employee.name),h("p",{className:"certificate-profession"},employee.profession||"موظف"," · رقم الموظف ",employee.employee_code||"—"),h("p",{className:"certificate-copy"},"تقديرًا لالتزامه ومساهمته الإيجابية خلال دورة التقييم، واعترافًا بجهده في دعم فريق العمل."),h("div",{className:"certificate-period"},h("span",null,chosenCertificateCycle.name),h("small",null,fmtDate(chosenCertificateCycle.start_date)," — ",fmtDate(chosenCertificateCycle.end_date))),h("div",{className:"certificate-stats"},h("div",null,h("strong",null,certificatePoints),h("small",null,"نقطة إيجابية")),h("div",null,h("strong",null,certificatePositive.length),h("small",null,"إنجازًا إيجابيًا")),h("div",null,h("strong",null,Math.round(computeScore(employee.id,chosenCertificateCycle.id))," / 100"),h("small",null,"النتيجة النهائية"))),h("footer",{className:"certificate-signature"},h("span",null,h("small",null,"تاريخ الإصدار"),h("strong",null,new Date().toLocaleDateString(locale()))),h("span",null,h("i",null,managerName),h("small",null,"إدارة ELM CAFE"))),h("div",{className:"certificate-actions no-print"},h("button",{type:"button",onClick:()=>setTimeout(()=>window.print(),120)},"طباعة / حفظ PDF"),h("small",{className:"certificate-share-hint"},"احفظ الشهادة بصيغة PDF، ثم أرفقها من ملفات الجهاز في واتساب."),h("button",{type:"button",onClick:()=>setCertificateOpen(false)},"إغلاق"))))));
   }
   function EvalRow({ e }) {
     const isPos = e.type === "positive";
-    return /* @__PURE__ */ React.createElement("div", { style: { ...s.rowCard, cursor: "default", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 8, height: 8, borderRadius: "50%", background: e.status === "cancelled" ? "var(--ink-4)" : isPos ? "var(--green)" : "var(--red)", flexShrink: 0, marginTop: 6 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, textAlign: "right", minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: e.status === "cancelled" ? "var(--ink-3)" : "var(--ink)", textDecoration: e.status === "cancelled" ? "line-through" : "none" } }, e.category_name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)" } }, e.evaluator_name, " \xB7 ", fmtDateTime(e.created_at)), e.note && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-2)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, e.note)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: isPos ? "var(--green)" : "var(--red)", flexShrink: 0 } }, isPos ? "+" : "-", e.category_points));
+    return /* @__PURE__ */ React.createElement("div", { style: { ...s.rowCard, cursor: "default", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 8, height: 8, borderRadius: "50%", background: e.status === "cancelled" ? "var(--ink-4)" : isPos ? "var(--green)" : "var(--red)", flexShrink: 0, marginTop: 6 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, textAlign: "start", minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: e.status === "cancelled" ? "var(--ink-3)" : "var(--ink)", textDecoration: e.status === "cancelled" ? "line-through" : "none" } }, e.category_name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)" } }, e.evaluator_name, " \xB7 ", fmtDateTime(e.created_at)), e.note && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-2)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, e.note)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: isPos ? "var(--green)" : "var(--red)", flexShrink: 0 } }, isPos ? "+" : "-", e.category_points));
   }
   const AI_NOTE_AREAS = [
     ["service", "خدمة العملاء"], ["cleanliness", "النظافة والترتيب"],
@@ -1802,7 +1864,7 @@ var __startElmCafeApp__ = (() => {
     }
     async function commit() {
       if (savingLock.current || !category) return;
-      if (note.includes("[وصف الواقعة]")) {
+      if (note.includes("[وصف الواقعة]") || note.includes("[describe the incident]")) {
         setAiError("استبدل [وصف الواقعة] بالتفاصيل الصحيحة قبل الحفظ.");
         return;
       }
@@ -1838,7 +1900,7 @@ var __startElmCafeApp__ = (() => {
         /* @__PURE__ */ React.createElement(Btn, { onClick: suggestNote, disabled: aiBusy || saving, style: { minHeight: 44 } }, aiBusy ? "جاري اقتراح الصياغة…" : "اقترح صياغة")),
       aiError && /* @__PURE__ */ React.createElement("p", { role: "status", style: { fontSize: 12, color: "var(--red)", margin: "10px 0 0" } }, aiError),
       aiSuggestions.length>0 && /* @__PURE__ */ React.createElement("div", { className:"ai-options", "aria-label":"اقتراحات الصياغة" },
-        aiSuggestions.map((candidate,index)=>React.createElement("button",{key:index,type:"button",className:"ai-option",disabled:saving,onClick:()=>{setNote(candidate);setAiError("");}},candidate)))), category && category.type === "negative" && /* @__PURE__ */ React.createElement("div", { style: { ...s.card, maxWidth: "100%", marginBottom: 16, padding: "6px 16px" } }, /* @__PURE__ */ React.createElement(Switch, { checked: isViolation, onChange: setIsViolation, label: "\u0625\u0634\u0639\u0627\u0631 \u0628\u0627\u0644\u0645\u062E\u0627\u0644\u0641\u0629", description: "\u064A\u0633\u062A\u0648\u062C\u0628 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u062F\u064A\u0631 \u0627\u0644\u0623\u0639\u0644\u0649 (\u0645\u062B\u0644\u064B\u0627: \u062E\u0635\u0645 \u0645\u0646 \u0627\u0644\u0631\u0627\u062A\u0628)" })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 6 } }, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", style: { flex: 1 }, disabled: !category || saving, onClick: commit }, saving ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638 \u0627\u0644\u062A\u0642\u064A\u064A\u0645")));
+        aiSuggestions.map((candidate,index)=>React.createElement("button",{key:index,type:"button",className:"ai-option",disabled:saving,onClick:()=>{setNote(tr(candidate));setAiError("");}},candidate)))), category && category.type === "negative" && /* @__PURE__ */ React.createElement("div", { style: { ...s.card, maxWidth: "100%", marginBottom: 16, padding: "6px 16px" } }, /* @__PURE__ */ React.createElement(Switch, { checked: isViolation, onChange: setIsViolation, label: "\u0625\u0634\u0639\u0627\u0631 \u0628\u0627\u0644\u0645\u062E\u0627\u0644\u0641\u0629", description: "\u064A\u0633\u062A\u0648\u062C\u0628 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u062F\u064A\u0631 \u0627\u0644\u0623\u0639\u0644\u0649 (\u0645\u062B\u0644\u064B\u0627: \u062E\u0635\u0645 \u0645\u0646 \u0627\u0644\u0631\u0627\u062A\u0628)" })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 6 } }, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", style: { flex: 1 }, disabled: !category || saving, onClick: commit }, saving ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638 \u0627\u0644\u062A\u0642\u064A\u064A\u0645")));
   }
   function HistoryScreen({ employee, evaluations, cycles = [], activeCycle, session, onCancel }) {
     const h = React.createElement;
@@ -1862,7 +1924,7 @@ var __startElmCafeApp__ = (() => {
         h("div",{className:"history-evaluator"},"سجّله ",e.evaluator_name),
         e.note && h("p",{className:"history-note"},e.note),
         e.status==="cancelled" ? h("small",{className:"history-cancelled"},"ألغاه ",e.edited_by," · ",fmtDateTime(e.edited_at),e.cancel_reason?` · ${e.cancel_reason}`:"") : canManage(e) && h("button",{type:"button",className:"history-cancel",onClick:()=>{setCancelTarget(e);setReason("");}},"إلغاء التقييم")))) : h("div",{className:"dash-empty"},"لا توجد تقييمات بهذه التصفية."),
-      cancelTarget && h(Modal,{title:"إلغاء التقييم",onClose:()=>setCancelTarget(null),footer:h(React.Fragment,null,h(Btn,{variant:"danger",onClick:()=>{onCancel(cancelTarget.id,reason);setCancelTarget(null);}},"تأكيد الإلغاء"),h(Btn,{variant:"ghost",onClick:()=>setCancelTarget(null)},"تراجع"))},
+      cancelTarget && h(Modal,{title:"إلغاء التقييم",onClose:()=>setCancelTarget(null),footer:h(React.Fragment,null,h(Btn,{variant:"danger",onClick:async()=>{if(await onCancel(cancelTarget.id,reason)===true)setCancelTarget(null);}},"تأكيد الإلغاء"),h(Btn,{variant:"ghost",onClick:()=>setCancelTarget(null)},"تراجع"))},
         h("p",null,"سيبقى التقييم في السجل كملغى ولن يُحتسب ضمن النقاط."),h(Field,{label:"سبب الإلغاء (اختياري)"},h("input",{style:s.input,value:reason,onChange:e=>setReason(e.target.value)}))));
   }
   function RewardsHub({employees,categories=[],catalog,earnings,redemptions,cycleAwards=[],ready,onOpenEmployee,onSaveReward,onUpdateReward,onRedeem}) {
@@ -1888,7 +1950,8 @@ var __startElmCafeApp__ = (() => {
       if(!form.name.trim()||!Number.isInteger(cost)||cost<=0||(form.reward_type==="cash"&&cash<=0)||(form.reward_type==="paid_leave"&&days<=0)){return;}
       setBusy(true);try{const payload={name:form.name.trim(),description:form.description.trim(),reward_type:form.reward_type,points_cost:cost,cash_amount:cash,leave_days:days,active:true};const ok=modal.editing?await onUpdateReward(modal.editing.id,payload):await onSaveReward(payload);if(ok)setModal(null);}finally{setBusy(false);}
     }
-    async function redeem(){if(!redeemEmployee||!selectedReward||busy)return;setBusy(true);try{const ok=await onRedeem(redeemEmployee.emp.id,selectedReward);if(ok){setRedeemEmployee(null);setSelectedReward("");}}finally{setBusy(false);}}
+    const redeemRequest=useRef(null),redeemLock=useRef(false);
+    async function redeem(){if(!redeemEmployee||!selectedReward||busy||redeemLock.current)return;redeemLock.current=true;setBusy(true);try{const ok=await onRedeem(redeemEmployee.emp.id,selectedReward, (redeemRequest.current?.key===redeemEmployee.emp.id+":"+selectedReward ? redeemRequest.current.id : (redeemRequest.current={key:redeemEmployee.emp.id+":"+selectedReward,id:crypto.randomUUID()}).id));if(ok){redeemRequest.current=null;setRedeemEmployee(null);setSelectedReward("");}}finally{redeemLock.current=false;setBusy(false);}}
     return h("div",{className:"rewards-screen"},
       h("header",{className:"rewards-hero"},h("span",{className:"eyebrow"},"ELM CAFE · REWARDS"),h("h1",null,"المكافآت والجوائز"),h("p",null,"كل نقطة هنا من تقييم إيجابي نشط. النقاط السلبية تؤثر على نتيجة الأداء فقط ولا تخصم من رصيد المكافآت."),h("p",{className:"reward-threshold-note"},"تكلفة المكافأة يحددها المدير حسب قيم الفئات الإيجابية",positivePointValues.length?" الحالية (+"+positivePointValues.join("، +")+").":"."," الـ500 نقطة في مكافأة الإجازة مثال مبدئي قابل للتعديل."),h("button",{type:"button",onClick:openNew},"إضافة مكافأة")),
       !ready&&h("div",{className:"rewards-setup"},h("strong",null,"يلزم إعداد سجل المكافآت مرة واحدة"),h("span",null,"شغّل ملف SQL المرفق في Supabase. الصفحة الحالية والبيانات الموجودة ستظل كما هي.")),
@@ -1932,58 +1995,35 @@ var __startElmCafeApp__ = (() => {
       h("section",{className:"dashboard-panel"},h("div",{className:"section-heading"},h("div",null,h("span",{className:"eyebrow"},"أعلى أداء"),h("h2",null,"MVP الدورة")),h("button",{className:"text-action",onClick:()=>onGo("reportsOverall")},"التقرير")),
         best&&showLiveLeader?h("button",{type:"button",className:"mvp-card",onClick:()=>liveLeaders.length===1?onOpenEmployee(best.emp.id):onGo("reportsOverall")},h("span",{className:"mvp-medal"},"★"),h("span",{className:"mvp-copy"},h("small",null,"أفضل نتيجة حتى الآن · تتغير مع التقييمات"),h("strong",null,liveLeaders.length===1?best.emp.name:`${liveLeaders.length} موظفين متعادلون`),h("small",null,liveLeaders.length===1?(best.emp.profession||"موظف"):"افتح التقرير لعرضهم")),h("span",{className:"mvp-score"},Math.round(best.score),h("small",null,"من 100"))):h("div",{className:"dash-empty"},"سيظهر المتصدر بعد تقييم ثلاثة موظفين على الأقل خلال يومين مختلفين. يمكن متابعة النتائج الحالية من التقرير.")),
       notRated.length>0 && activeCycle && h("section",{className:"dashboard-panel"},h("div",{className:"section-heading"},h("div",null,h("span",{className:"eyebrow"},"الخطوة التالية"),h("h2",null,"لم يُقيّموا بعد")),h("button",{className:"text-action",onClick:()=>onGo("home")},"عرض الجميع")),
-        h("div",{className:"pending-list"},notRated.slice(0,3).map(e=>h("button",{key:e.id,type:"button",onClick:()=>onNewEval(e.id)},h("span",{className:"person-avatar",style:{background:avatarColor(e.name).bg,color:avatarColor(e.name).fg}},e.name.trim().slice(0,1)),h("span",null,h("strong",null,e.name),h("small",null,e.profession||"موظف")),h(Icon,{svg:ICONS.back,size:16}))))),
+        h("div",{className:"pending-list"},notRated.slice(0,3).map(e=>h("button",{key:e.id,type:"button",onClick:()=>onNewEval(e.id)},h("span",{className:"person-avatar",style:{background:avatarColor(e.name).bg,color:avatarColor(e.name).fg}},tr(e.name).trim().slice(0,1)),h("span",null,h("strong",null,e.name),h("small",null,e.profession||"موظف")),h(Icon,{svg:ICONS.back,size:16}))))),
       h("section",{className:"dashboard-panel"},h("div",{className:"section-heading"},h("div",null,h("span",{className:"eyebrow"},"المتابعة"),h("h2",null,"آخر التقييمات")),h("button",{className:"text-action",onClick:()=>onGo("evaluationsLog")},"عرض الكل")),
         recentEvaluations.length?h("div",{className:"activity-feed"},recentEvaluations.map(e=>h("button",{key:e.id,type:"button",className:"evaluation-activity-item",onClick:()=>setSelectedRecentId(e.id)},h("span",{className:e.type==="positive"?"evaluation-sign positive":"evaluation-sign negative"},e.type==="positive"?`+${e.category_points}`:`−${e.category_points}`),h("span",{className:"evaluation-activity-main"},h("strong",null,e.category_name),h("small",null,employees.find(emp=>emp.id===e.employee_id)?.name||"موظف"," · ",relTime(e.created_at)))))):h("div",{className:"dash-empty"},"لا توجد تقييمات بعد.")),
       selectedRecent&&h(EvaluationDetailModal,{evaluation:selectedRecent,employees,onClose:()=>setSelectedRecentId(null)}));
   }
+
+  const SecurityMonitor=lazyScreen("records","SecurityMonitor",()=>({Btn,EmptyState,ICONS,Icon,Modal,fmtDate,fmtDateTime,s,supabase,useEffect,useState}));
+
+  const moduleLoads=new Map();
+  function loadScreenModule(group){
+    if(window.ELM_MODULES?.[group])return Promise.resolve(window.ELM_MODULES[group]);
+    if(moduleLoads.has(group))return moduleLoads.get(group);
+    const promise=new Promise((resolve,reject)=>{const script=document.createElement("script");script.src="./modules/"+group+".js?v=1.2.0";const timer=setTimeout(()=>fail(),15000);function fail(){clearTimeout(timer);script.remove();moduleLoads.delete(group);reject(new Error("Screen module unavailable"));}script.onerror=fail;script.onload=()=>{clearTimeout(timer);if(window.ELM_MODULES?.[group])resolve(window.ELM_MODULES[group]);else fail();};document.head.appendChild(script);});moduleLoads.set(group,promise);return promise;
+  }
+  class ScreenBoundary extends React.Component{
+    constructor(props){super(props);this.state={error:false};}
+    static getDerivedStateFromError(){return {error:true};}
+    componentDidCatch(){reportClientError("load_error");}
+    render(){return this.state.error?React.createElement("section",{style:s.card,role:"alert"},React.createElement("p",null,"تعذّر تحميل الشاشة. تحقق من الاتصال ثم حاول مجددًا."),React.createElement(Btn,{onClick:this.props.onRetry},"إعادة المحاولة")):this.props.children;}
+  }
+  function lazyScreen(group,name,deps){return function DeferredScreen(props){const [attempt,setAttempt]=useState(0);const Component=useMemo(()=>React.lazy(()=>loadScreenModule(group).then(factory=>({default:factory(deps())[name]}))),[attempt]);return React.createElement(ScreenBoundary,{key:attempt,onRetry:()=>setAttempt(n=>n+1)},React.createElement(React.Suspense,{fallback:React.createElement("div",{className:"screen-skeleton",role:"status","aria-label":tr("جارِ التحميل…")},...Array.from({length:3},(_,i)=>React.createElement("div",{key:i})))},React.createElement(Component,props)));};}
+
   function MoreMenuScreen({ onGo, isOwner }) {
-    return /* @__PURE__ */ React.createElement("div", { className: "more-screen" }, React.createElement("div",{className:"more-screen-grid",style:{display:"grid",gap:9}}, isOwner && /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.shield, label: "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645\u064A\u0646", onClick: () => onGo("adminUsers") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.settings, label: "\u062A\u0635\u0646\u064A\u0641\u0627\u062A \u0648\u0646\u0637\u0627\u0642\u0627\u062A \u0627\u0644\u062A\u0642\u064A\u064A\u0645", onClick: () => onGo("adminCategories") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.clock, label: "\u062F\u0648\u0631\u0627\u062A \u0627\u0644\u062A\u0642\u064A\u064A\u0645", onClick: () => onGo("adminCycles") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.grid, label: "المكافآت والجوائز", onClick: () => onGo("rewardsHub") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.chart, label: "\u0646\u0634\u0627\u0637 \u0627\u0644\u0645\u0642\u064A\u0651\u0645\u064A\u0646", onClick: () => onGo("evaluatorActivity") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.clipboard, label: "\u0633\u062C\u0644 \u0627\u0644\u062A\u062F\u0642\u064A\u0642", onClick: () => onGo("auditLog") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.trash, label: "\u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A", onClick: () => onGo("trash") })));
+    return /* @__PURE__ */ React.createElement("div", { className: "more-screen" }, React.createElement("div",{className:"more-screen-grid",style:{display:"grid",gap:9}}, isOwner && React.createElement(NavRow,{icon:ICONS.shield,label:"مراقبة النظام",onClick:()=>onGo("securityMonitor")}), isOwner && /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.shield, label: "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645\u064A\u0646", onClick: () => onGo("adminUsers") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.settings, label: "\u062A\u0635\u0646\u064A\u0641\u0627\u062A \u0648\u0646\u0637\u0627\u0642\u0627\u062A \u0627\u0644\u062A\u0642\u064A\u064A\u0645", onClick: () => onGo("adminCategories") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.clock, label: "\u062F\u0648\u0631\u0627\u062A \u0627\u0644\u062A\u0642\u064A\u064A\u0645", onClick: () => onGo("adminCycles") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.grid, label: "المكافآت والجوائز", onClick: () => onGo("rewardsHub") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.chart, label: "\u0646\u0634\u0627\u0637 \u0627\u0644\u0645\u0642\u064A\u0651\u0645\u064A\u0646", onClick: () => onGo("evaluatorActivity") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.clipboard, label: "\u0633\u062C\u0644 \u0627\u0644\u062A\u062F\u0642\u064A\u0642", onClick: () => onGo("auditLog") }), /* @__PURE__ */ React.createElement(NavRow, { icon: ICONS.trash, label: "\u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A", onClick: () => onGo("trash") })));
   }
   function NavRow({ icon, label, onClick }) {
-    return /* @__PURE__ */ React.createElement("button", { onClick, className:"more-row" + (label === "سلة المهملات" ? " more-row-danger" : ""), style: { ...s.rowCard, color:"var(--ink)", font:"inherit" } }, /* @__PURE__ */ React.createElement("div", { style: { color: "var(--forest)" } }, /* @__PURE__ */ React.createElement(Icon, { svg: icon, size: 18 })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, textAlign: "right", fontWeight: 600, fontSize: 14 } }, label), /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.back, size: 18, color: "var(--ink-3)" }));
+    return /* @__PURE__ */ React.createElement("button", { onClick, className:"more-row" + (icon === ICONS.trash ? " more-row-danger" : ""), style: { ...s.rowCard, color:"var(--ink)", font:"inherit" } }, /* @__PURE__ */ React.createElement("div", { style: { color: "var(--forest)" } }, /* @__PURE__ */ React.createElement(Icon, { svg: icon, size: 18 })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, textAlign: "start", fontWeight: 600, fontSize: 14 } }, label), /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.back, size: 18, color: "var(--ink-3)" }));
   }
-  function AdminEmployees({ employees, onAdd, onArchive, onDelete }) {
-    const [open, setOpen] = useState(false);
-    const [name, setName] = useState("");
-    const [nameEn, setNameEn] = useState("");
-    const [empId, setEmpId] = useState("");
-    const [profession, setProfession] = useState("");
-    const [err, setErr] = useState("");
-    const [archiveTarget, setArchiveTarget] = useState(null);
-    const [deleteTarget, setDeleteTarget] = useState(null);
-    const [confirmText, setConfirmText] = useState("");
-    const [saving, setSaving] = useState(false);
-    async function submit(e) {
-      e.preventDefault();
-      if (saving) return;
-      if (!name.trim() || !empId.trim() || !profession.trim()) {
-        setErr("\u0627\u0645\u0644\u0623 \u0643\u0644 \u0627\u0644\u062D\u0642\u0648\u0644");
-        return;
-      }
-      setSaving(true);
-      const ok = await onAdd({ employee_code: empId.trim(), name: name.trim(), ...(nameEn.trim() ? { name_en: nameEn.trim() } : {}), profession: profession.trim(), archived: false });
-      setSaving(false);
-      if (ok !== false) {
-        setOpen(false);
-        setName("");
-        setNameEn("");
-        setEmpId("");
-        setProfession("");
-        setErr("");
-      }
-    }
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", style: { width: "100%", marginBottom: 14 }, onClick: () => setOpen(true) }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.plus, size: 16 }), " \u0625\u0636\u0627\u0641\u0629 \u0645\u0648\u0638\u0641"), !employees.length ? /* @__PURE__ */ React.createElement(EmptyState, { icon: /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.users, size: 28 }), title: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0648\u0638\u0641\u0648\u0646", body: "\u0627\u0628\u062F\u0623 \u0628\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0644 \u0645\u0648\u0638\u0641." }) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, employees.map((e) => /* @__PURE__ */ React.createElement("div", { key: e.id, style: { ...s.rowCard, cursor: "default" } }, /* @__PURE__ */ React.createElement("div", { style: { ...s.avatarCircle, background: avatarColor(e.name).bg, color: avatarColor(e.name).fg } }, e.name.slice(0, 1)), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, e.name, " ", e.archived && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-3)", fontWeight: 400, fontSize: 12 } }, "(\u0645\u0624\u0631\u0634\u0641)")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)" } }, e.profession, " \xB7 \u0631\u0642\u0645 ", e.employee_code)), /* @__PURE__ */ React.createElement("button", { onClick: () => setArchiveTarget(e), style: s.iconBtn, "aria-label": "\u0623\u0631\u0634\u0641\u0629" }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.archive, size: 16, color: e.archived ? "var(--forest)" : "var(--ink-3)" })), /* @__PURE__ */ React.createElement("button", { onClick: () => {
-      setDeleteTarget(e);
-      setConfirmText("");
-    }, style: s.iconBtn, "aria-label": "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A" }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.trash, size: 16, color: "var(--red)" }))))), open && /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u0645\u0648\u0638\u0641", onClose: () => setOpen(false), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: submit, disabled: saving }, saving ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setOpen(false) }, "\u0625\u0644\u063A\u0627\u0621")) }, /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0638\u0641" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: name, onChange: (e) => setName(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0627\u0633\u0645 \u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)" }, /* @__PURE__ */ React.createElement("input", { style: { ...s.input, direction: "ltr", textAlign: "left" }, value: nameEn, onChange: (e) => setNameEn(e.target.value), autoCapitalize: "words" })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0648\u0638\u064A\u0641\u064A" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: empId, onChange: (e) => setEmpId(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0645\u0633\u0645\u0649 \u0627\u0644\u0648\u0638\u064A\u0641\u064A" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: profession, onChange: (e) => setProfession(e.target.value) })), err && /* @__PURE__ */ React.createElement("div", { style: s.errText }, err)), archiveTarget && /* @__PURE__ */ React.createElement(Modal, { title: archiveTarget.archived ? "\u0625\u0639\u0627\u062F\u0629 \u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u0645\u0648\u0638\u0641" : "\u0623\u0631\u0634\u0641\u0629 \u0627\u0644\u0645\u0648\u0638\u0641", onClose: () => setArchiveTarget(null), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: archiveTarget.archived ? "primary" : "danger", onClick: () => {
-      onArchive(archiveTarget.id, !archiveTarget.archived);
-      setArchiveTarget(null);
-    } }, archiveTarget.archived ? "\u062A\u0623\u0643\u064A\u062F \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0641\u0639\u064A\u0644" : "\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0623\u0631\u0634\u0641\u0629"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setArchiveTarget(null) }, "\u062A\u0631\u0627\u062C\u0639")) }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, archiveTarget.archived ? `\u0633\u064A\u0638\u0647\u0631 "${archiveTarget.name}" \u0645\u0631\u0629 \u0623\u062E\u0631\u0649 \u0641\u064A \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646 \u0627\u0644\u0646\u0634\u0637\u064A\u0646.` : `\u0644\u0646 \u064A\u0638\u0647\u0631 "${archiveTarget.name}" \u0641\u064A \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646\u060C \u0644\u0643\u0646 \u0633\u062C\u0644 \u062A\u0642\u064A\u064A\u0645\u0627\u062A\u0647 \u0627\u0644\u0633\u0627\u0628\u0642\u0629 \u064A\u0628\u0642\u0649 \u0645\u062D\u0641\u0648\u0638\u064B\u0627 \u0628\u0627\u0644\u0643\u0627\u0645\u0644.`)), deleteTarget && /* @__PURE__ */ React.createElement(Modal, { title: "\u062D\u0630\u0641 \u0627\u0644\u0645\u0648\u0638\u0641 \u0646\u0647\u0627\u0626\u064A\u064B\u0627", onClose: () => setDeleteTarget(null), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "danger", disabled: confirmText.trim() !== deleteTarget.name.trim(), onClick: () => {
-      onDelete(deleteTarget.id, deleteTarget.name);
-      setDeleteTarget(null);
-    } }, "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A \u2014 \u0644\u0627 \u0631\u062C\u0648\u0639"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setDeleteTarget(null) }, "\u062A\u0631\u0627\u062C\u0639")) }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--red)", marginBottom: 12, fontWeight: 600 } }, '\u0647\u0630\u0627 \u0633\u064A\u062D\u0630\u0641 "', deleteTarget.name, '" \u0648\u0643\u0644 \u062A\u0642\u064A\u064A\u0645\u0627\u062A\u0647 \u0644\u0644\u0623\u0628\u062F. \u0644\u0627 \u064A\u0645\u0643\u0646 \u0627\u0644\u062A\u0631\u0627\u062C\u0639 \u0639\u0646 \u0647\u0630\u0627 \u0627\u0644\u0625\u062C\u0631\u0627\u0621. \u0644\u0648 \u062A\u0642\u0635\u062F \u0625\u0628\u0639\u0627\u062F\u0647 \u0641\u0642\u0637\u060C \u0627\u0633\u062A\u062E\u062F\u0645 \u0627\u0644\u0623\u0631\u0634\u0641\u0629 \u0628\u062F\u0644\u064B\u0627 \u0645\u0646 \u0630\u0644\u0643.'), /* @__PURE__ */ React.createElement(Field, { label: `\u0627\u0643\u062A\u0628 \u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0638\u0641 "${deleteTarget.name}" \u0628\u0627\u0644\u0643\u0627\u0645\u0644 \u0644\u0644\u062A\u0623\u0643\u064A\u062F` }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: confirmText, onChange: (e) => setConfirmText(e.target.value) }))));
-  }
+  const AdminEmployees=lazyScreen("management","AdminEmployees",()=>({Btn,EmptyState,Field,ICONS,Icon,Modal,PERMISSION_DEFS,Switch,avatarColor,emptyPerms,fmtDate,s,tr,useEffect,useRef,useState}));
   const PERMISSION_DEFS = [
     { key: "canManageEmployees", label: "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646", description: "\u0625\u0636\u0627\u0641\u0629\u060C \u0623\u0631\u0634\u0641\u0629\u060C \u0648\u062D\u0630\u0641 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646" },
     { key: "canCreateCycle", label: "\u0625\u062F\u0627\u0631\u0629 \u062F\u0648\u0631\u0627\u062A \u0627\u0644\u062A\u0642\u064A\u064A\u0645", description: "\u0625\u0646\u0634\u0627\u0621 \u0648\u0625\u063A\u0644\u0627\u0642 \u0648\u0625\u0639\u0627\u062F\u0629 \u0641\u062A\u062D \u0627\u0644\u062F\u0648\u0631\u0627\u062A" },
@@ -1993,210 +2033,11 @@ var __startElmCafeApp__ = (() => {
   function emptyPerms() {
     return { canManageEmployees: false, canCreateCycle: false, canEditCategories: false, canManageAllEvaluations: false };
   }
-  function AdminUsers({ profiles, userLookup, ownId, onAdd, onToggle, onDelete, onUpdatePermissions }) {
-    const h=React.createElement;
-    const [open,setOpen]=useState(false),[name,setName]=useState(""),[username,setUsername]=useState(""),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[role,setRole]=useState("evaluator"),[err,setErr]=useState("");
-    const [newPerms,setNewPerms]=useState(emptyPerms()),[permTarget,setPermTarget]=useState(null),[editPerms,setEditPerms]=useState(emptyPerms());
-    const [infoId,setInfoId]=useState(null),[deleteTarget,setDeleteTarget]=useState(null),[confirmText,setConfirmText]=useState(""),[saving,setSaving]=useState(false),[busyId,setBusyId]=useState(null);
-    const accountSubmitLock=useRef(false);
-    const infoUser=profiles.find(u=>u?.id===infoId);
-    async function submit(e){
-      e?.preventDefault?.();if(accountSubmitLock.current)return;
-      if(!name.trim()||!/^[a-z0-9_.-]{3,40}$/.test(username.trim().toLowerCase())||!/^\S+@\S+\.\S+$/.test(email.trim())||password.length<8){setErr("أكمل الاسم واسم دخول من 3 أحرف إنجليزية على الأقل وبريدًا صحيحًا وكلمة مرور من 8 أحرف على الأقل.");return;}
-      accountSubmitLock.current=true;setSaving(true);
-      try{const ok=await onAdd({name:name.trim(),username:username.trim(),email:email.trim(),password,role,permissions:newPerms});if(ok!==false){setOpen(false);setName("");setUsername("");setEmail("");setPassword("");setRole("evaluator");setNewPerms(emptyPerms());setErr("");}}
-      catch(error){setErr(error?.message||"تعذرت إضافة المستخدم. حاول مرة أخرى.");}
-      finally{setSaving(false);accountSubmitLock.current=false;}
-    }
-    function openPerms(u){setPermTarget(u);setEditPerms({canManageEmployees:!!u.can_manage_employees,canCreateCycle:!!u.can_create_cycle,canEditCategories:!!u.can_edit_categories,canManageAllEvaluations:!!u.can_manage_all_evaluations});}
-    async function toggleUser(u){if(busyId||u.id===ownId)return;setBusyId(u.id);try{await onToggle(u.id,!u.active);}finally{setBusyId(null);}}
-    function requestDelete(u){if(u.id===ownId||u.active)return;setInfoId(null);setDeleteTarget(u);setConfirmText("");}
-    const field=(label,value)=>h("div",{key:label},h("small",null,label),h("strong",null,value||"—"));
-    return h("div",{className:"account-management"},
-      h(Btn,{variant:"primary",style:{width:"100%",marginBottom:12},onClick:()=>setOpen(true)},h(Icon,{svg:ICONS.plus,size:16})," إضافة مستخدم"),
-      h("div",{style:{display:"grid",gap:8}},profiles.filter(Boolean).map(u=>h("div",{key:u.id,style:{...s.rowCard,cursor:"default",width:"100%",boxSizing:"border-box"}},
-        h("button",{type:"button",onClick:()=>setInfoId(u.id),style:{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0,background:"none",border:0,padding:0,cursor:"pointer",textAlign:"right",color:"var(--ink)"}},h("div",{style:{...s.avatarCircle,background:avatarColor(u.name).bg,color:avatarColor(u.name).fg,flex:"none"}},u.name.slice(0,1)),h("span",{style:{display:"grid",gap:3,minWidth:0}},h("strong",{style:{fontSize:14}},u.name),h("small",{style:{fontSize:11,color:"var(--ink-3)"}},u.role==="super_admin"?"مدير أعلى":"مقيّم",u.active?" · نشط":" · معطّل"))),
-        u.id!==ownId&&h("button",{type:"button",onClick:()=>openPerms(u),style:s.iconBtn,"aria-label":`صلاحيات ${u.name}`},h(Icon,{svg:ICONS.shield,size:17}))))),
-      infoUser&&(()=>{const lookup=userLookup.find(l=>l.user_id===infoUser.id),perms=PERMISSION_DEFS.filter(p=>infoUser[p.key.replace(/([A-Z])/g,m=>"_"+m.toLowerCase())]);return h(Modal,{title:"بيانات الحساب",account:true,onClose:()=>setInfoId(null),footer:h(React.Fragment,null,
-        infoUser.id!==ownId&&h(Btn,{variant:infoUser.active?"danger":"primary",disabled:busyId===infoUser.id,onClick:()=>toggleUser(infoUser)},busyId===infoUser.id?"جارِ التحديث…":infoUser.active?"إيقاف الحساب":"تفعيل الحساب"),
-        infoUser.id!==ownId&&!infoUser.active&&h(Btn,{variant:"danger",onClick:()=>requestDelete(infoUser)},"حذف الوصول"),
-        h(Btn,{variant:"ghost",onClick:()=>setInfoId(null)},"إغلاق"))},
-        h("div",{className:"account-details"},h("div",{className:"account-details-hero"},h("div",{style:{...s.avatarCircle,background:avatarColor(infoUser.name).bg,color:avatarColor(infoUser.name).fg}},infoUser.name.slice(0,1)),h("span",null,h("strong",null,infoUser.name),h("small",null,infoUser.active?"حساب نشط":"حساب معطّل"))),
-        h("div",{className:"account-details-grid"},field("اسم الدخول",lookup?.username),field("الدور",infoUser.role==="super_admin"?"مدير أعلى":"مقيّم"),field("البريد الإلكتروني",lookup?.email),field("تاريخ الإنشاء",infoUser.created_at?fmtDate(infoUser.created_at):"—")),
-        infoUser.role!=="super_admin"&&h("div",{className:"account-permissions"},h("strong",null,"الصلاحيات الإضافية"),h("div",null,perms.length?perms.map(p=>p.label).join(" · "):"لا توجد صلاحيات إضافية")),
-        infoUser.id===ownId&&h("small",null,"هذا حسابك؛ لا يمكن إيقافه أو حذفه من هنا.")));
-      })(),
-      open&&h(Modal,{title:"إضافة مستخدم",account:true,onClose:()=>!saving&&setOpen(false),footer:h(React.Fragment,null,h(Btn,{variant:"primary",onClick:submit,disabled:saving},saving?"جارِ الحفظ…":"حفظ المستخدم"),h(Btn,{variant:"ghost",onClick:()=>setOpen(false),disabled:saving},"إلغاء"))},
-        h(Field,{label:"الاسم"},h("input",{style:s.input,value:name,onChange:e=>setName(e.target.value)})),
-        h(Field,{label:"اسم الدخول (دون مسافات)"},h("input",{style:s.input,value:username,onChange:e=>setUsername(e.target.value.replace(/\s/g,""))})),
-        h(Field,{label:"البريد الإلكتروني لاسترجاع كلمة المرور"},h("input",{type:"email",style:s.input,value:email,onChange:e=>setEmail(e.target.value),placeholder:"example@gmail.com"})),
-        h(Field,{label:"كلمة المرور"},h("input",{type:"password",style:s.input,value:password,onChange:e=>setPassword(e.target.value)})),
-        h(Field,{label:"الدور"},h("select",{style:s.input,value:role,onChange:e=>setRole(e.target.value)},h("option",{value:"evaluator"},"مقيّم"),h("option",{value:"super_admin"},"مدير أعلى"))),
-        role==="evaluator"&&h("div",{style:{marginTop:8}},h("strong",null,"صلاحيات إضافية (اختياري)"),PERMISSION_DEFS.map(p=>h(Switch,{key:p.key,checked:newPerms[p.key],onChange:v=>setNewPerms({...newPerms,[p.key]:v}),label:p.label,description:p.description}))),
-        err&&h("div",{style:s.errText},err)),
-      permTarget&&h(Modal,{title:`صلاحيات ${permTarget.name}`,account:true,onClose:()=>setPermTarget(null),footer:h(React.Fragment,null,h(Btn,{variant:"primary",onClick:async()=>{if(busyId)return;setBusyId(permTarget.id);try{const ok=await onUpdatePermissions(permTarget.id,editPerms);if(ok!==false)setPermTarget(null);}finally{setBusyId(null);}},disabled:busyId===permTarget.id},busyId===permTarget.id?"جارِ الحفظ…":"حفظ الصلاحيات"),h(Btn,{variant:"ghost",onClick:()=>setPermTarget(null)},"إلغاء"))},PERMISSION_DEFS.map(p=>h(Switch,{key:p.key,checked:editPerms[p.key],onChange:v=>setEditPerms({...editPerms,[p.key]:v}),label:p.label,description:p.description}))),
-      deleteTarget&&h(Modal,{title:"حذف وصول المستخدم للتطبيق",account:true,onClose:()=>setDeleteTarget(null),footer:h(React.Fragment,null,h(Btn,{variant:"danger",disabled:confirmText.trim()!==deleteTarget.name.trim()||!!busyId,onClick:async()=>{if(busyId)return;setBusyId(deleteTarget.id);try{const ok=await onDelete(deleteTarget.id,deleteTarget.name);if(ok!==false)setDeleteTarget(null);}finally{setBusyId(null);}}},busyId===deleteTarget.id?"جارِ الحذف…":"تأكيد حذف الوصول"),h(Btn,{variant:"ghost",onClick:()=>setDeleteTarget(null)},"تراجع"))},h("p",{style:{fontSize:13,lineHeight:1.7,color:"var(--red)"}},"الحذف يمنع الوصول للتطبيق. لو لدى المستخدم تقييمات سابقة، استخدم إيقاف الحساب للحفاظ على السجل. حساب Supabase Auth منفصل."),h(Field,{label:`اكتب اسم "${deleteTarget.name}" كاملًا للتأكيد`},h("input",{style:s.input,value:confirmText,onChange:e=>setConfirmText(e.target.value)}))));
-  }
-  function AdminCategories({ categories, ratingBands, onAddCategory, onUpdateCategory, onUpdateBands, onArchiveCategory, onArchiveBand }) {
-    const [open, setOpen] = useState(false);
-    const [name, setName] = useState("");
-    const [nameEn, setNameEn] = useState("");
-    const [type, setType] = useState("negative");
-    const [points, setPoints] = useState(2);
-    const [editPoints, setEditPoints] = useState({});
-    const [bands, setBands] = useState(ratingBands);
-    const [saving, setSaving] = useState(false);
-    const [pendingArchive,setPendingArchive]=useState(null);
-    useEffect(() => {
-      setBands(ratingBands);
-    }, [ratingBands]);
-    async function submit(e) {
-      e.preventDefault();
-      if (saving || !name.trim() || !points) return;
-      setSaving(true);
-      let ok;
-      try { ok = await onAddCategory({ name: name.trim(), ...(nameEn.trim() ? { name_en: nameEn.trim() } : {}), type, points: Number(points), active: true }); }
-      finally { setSaving(false); }
-      if (ok === false) return;
-      setOpen(false);
-      setName("");
-      setNameEn("");
-      setType("negative");
-      setPoints(2);
-    }
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 } }, "\u062A\u0635\u0646\u064A\u0641\u0627\u062A \u0627\u0644\u062A\u0642\u064A\u064A\u0645"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)", marginBottom: 10 } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u0646\u0642\u0627\u0637 \u064A\u0624\u062B\u0631 \u0639\u0644\u0649 \u0627\u0644\u062A\u0642\u064A\u064A\u0645\u0627\u062A \u0627\u0644\u062C\u062F\u064A\u062F\u0629 \u0641\u0642\u0637."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 } }, categories.map((c) => {
-      var _a;
-      return /* @__PURE__ */ React.createElement("div", { key: c.id, style: s.card }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, c.name, " ", !c.active && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-3)", fontWeight: 400, fontSize: 12 } }, "(\u0645\u0639\u0637\u0651\u0644)")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: c.type === "positive" ? "var(--green)" : "var(--red)" } }, c.type === "positive" ? "\u0625\u064A\u062C\u0627\u0628\u064A" : "\u0633\u0644\u0628\u064A")), /* @__PURE__ */ React.createElement("button", { onClick: () => onUpdateCategory(c.id, { active: !c.active }), style: s.iconBtn }, /* @__PURE__ */ React.createElement(Icon, { svg: c.active ? ICONS.lock : ICONS.unlock, size: 15, color: c.active ? "var(--ink-3)" : "var(--forest)" })), /* @__PURE__ */ React.createElement("button", {onClick:()=>setPendingArchive({type:"category",id:c.id,label:c.name}),style:s.iconBtn,"aria-label":"نقل التصنيف للسلة"}, /* @__PURE__ */ React.createElement(Icon,{svg:ICONS.trash,size:15,color:"var(--red)"}))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("input", { type: "number", min: "1", style: { ...s.input, width: 80 }, value: (_a = editPoints[c.id]) != null ? _a : c.points, onChange: (e) => setEditPoints({ ...editPoints, [c.id]: e.target.value }) }), /* @__PURE__ */ React.createElement(Btn, { onClick: () => {
-        var _a2;
-        return onUpdateCategory(c.id, { points: Number((_a2 = editPoints[c.id]) != null ? _a2 : c.points) });
-      } }, "\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0646\u0642\u0627\u0637")));
-    })), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", style: { width: "100%", marginBottom: 20 }, onClick: () => setOpen(true) }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.plus, size: 16 }), " \u0625\u0636\u0627\u0641\u0629 \u062A\u0635\u0646\u064A\u0641 \u062C\u062F\u064A\u062F"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 } }, "\u0646\u0637\u0627\u0642\u0627\u062A \u0627\u0644\u062A\u0642\u064A\u064A\u0645"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 } }, bands.map((b, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: 6, alignItems: "center" } }, /* @__PURE__ */ React.createElement("input", { type: "number", style: { ...s.input, width: 60 }, value: b.min, onChange: (e) => {
-      const nb = [...bands];
-      nb[i] = { ...b, min: Number(e.target.value) };
-      setBands(nb);
-    } }), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-3)" } }, "\u2014"), /* @__PURE__ */ React.createElement("input", { type: "number", style: { ...s.input, width: 60 }, value: b.max, onChange: (e) => {
-      const nb = [...bands];
-      nb[i] = { ...b, max: Number(e.target.value) };
-      setBands(nb);
-    } }), /* @__PURE__ */ React.createElement("input", { style: { ...s.input, flex: 1 }, value: b.label, onChange: (e) => {
-      const nb = [...bands];
-      nb[i] = { ...b, label: e.target.value };
-      setBands(nb);
-    } }), /* @__PURE__ */ React.createElement("button", {onClick:()=>{const midpoint=Math.floor((b.min+b.max)/2);if(midpoint>=b.max)return;const next=[...bands];next.splice(i,1,{...b,max:midpoint},{id:null,min:midpoint+1,max:b.max,label:"نطاق جديد"});setBands(next);},disabled:b.max-b.min<1,style:s.iconBtn,"aria-label":"تقسيم النطاق وإضافة نطاق جديد"}, /* @__PURE__ */ React.createElement(Icon,{svg:ICONS.plus,size:15,color:"var(--forest)"})), /* @__PURE__ */ React.createElement("button", {onClick:()=>setPendingArchive({type:"band",id:b.id,label:b.label}),disabled:bands.length<2 || !b.id,style:s.iconBtn,"aria-label":"نقل النطاق للسلة"}, /* @__PURE__ */ React.createElement(Icon,{svg:ICONS.trash,size:15,color:"var(--red)"}))))), /* @__PURE__ */ React.createElement(Btn, { onClick: async () => { if(saving)return;setSaving(true);try{await onUpdateBands(bands);}finally{setSaving(false);} }, disabled:saving, style: { width: "100%" } }, saving ? "جارِ الحفظ…" : "\u062D\u0641\u0638 \u0627\u0644\u0646\u0637\u0627\u0642\u0627\u062A"), open && /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u062A\u0635\u0646\u064A\u0641", onClose: () => setOpen(false), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: submit, disabled: saving }, saving ? "\u062C\u0627\u0631\u0650 \u0627\u0644\u062D\u0641\u0638\u2026" : "\u062D\u0641\u0638"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setOpen(false) }, "\u0625\u0644\u063A\u0627\u0621")) }, /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0627\u0633\u0645" }, /* @__PURE__ */ React.createElement("input", { style: s.input, value: name, onChange: (e) => setName(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0627\u0633\u0645 \u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)" }, /* @__PURE__ */ React.createElement("input", { style: { ...s.input, direction: "ltr", textAlign: "left" }, value: nameEn, onChange: (e) => setNameEn(e.target.value), autoCapitalize: "words" })), /* @__PURE__ */ React.createElement(Field, { label: "\u0627\u0644\u0646\u0648\u0639" }, /* @__PURE__ */ React.createElement("select", { style: s.input, value: type, onChange: (e) => setType(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "negative" }, "\u0633\u0644\u0628\u064A"), /* @__PURE__ */ React.createElement("option", { value: "positive" }, "\u0625\u064A\u062C\u0627\u0628\u064A"))), /* @__PURE__ */ React.createElement(Field, { label: "\u0639\u062F\u062F \u0627\u0644\u0646\u0642\u0627\u0637" }, /* @__PURE__ */ React.createElement("input", { type: "number", min: "1", style: s.input, value: points, onChange: (e) => setPoints(e.target.value) }))), pendingArchive && /* @__PURE__ */ React.createElement(Modal,{title:"نقل إلى سلة المهملات",onClose:()=>setPendingArchive(null),footer: /* @__PURE__ */ React.createElement(React.Fragment,null, /* @__PURE__ */ React.createElement(Btn,{variant:"danger",disabled:saving,onClick:async()=>{if(saving)return;setSaving(true);const ok=await(pendingArchive.type==="band"?onArchiveBand:onArchiveCategory)(pendingArchive.id);setSaving(false);if(ok)setPendingArchive(null);}},saving?"جارِ النقل…":"نقل للسلة"), /* @__PURE__ */ React.createElement(Btn,{variant:"ghost",onClick:()=>setPendingArchive(null)},"تراجع"))},"سيختفي «",pendingArchive.label,"» من خيارات التقييم الجديدة. التقييمات السابقة محفوظة. حذف النطاق يضم درجاته للنطاق المجاور حتى لا تترك فجوة."));
-  }
-  function addOneMonth(dateStr) {
-    const d = /* @__PURE__ */ new Date(dateStr + "T00:00:00");
-    const day = d.getDate();
-    d.setMonth(d.getMonth() + 1);
-    if (d.getDate() !== day) d.setDate(0);
-    return d.toISOString().slice(0, 10);
-  }
-  function AdminCycles({ cycles, employees, evaluations, onCreate, onClose, onReopen, onCancel, onTrash, onOpenReports }) {
-    const h = React.createElement;
-    const [open,setOpen]=useState(false), [name,setName]=useState(""), [start,setStart]=useState(""), [end,setEnd]=useState(""), [endTouched,setEndTouched]=useState(false), [err,setErr]=useState(""), [saving,setSaving]=useState(false), [actionTarget,setActionTarget]=useState(null);
-    const createLock=useRef(false);
-    const [actionBusy,setActionBusy]=useState(false),actionLock=useRef(false);
-    async function commitAction(){
-      if(!actionTarget||actionLock.current)return;
-      actionLock.current=true;setActionBusy(true);
-      try{
-        setErr("");
-        const {cycle,action}=actionTarget;
-        const result=await actionConfig[action][3](cycle.id,cycle.name);
-        if(result===true)setActionTarget(null);
-      }catch(error){setErr(error?.message||"تعذّر تحديث الدورة. حاول مرة أخرى.");}
-      finally{actionLock.current=false;setActionBusy(false);}
-    }
-    const active = cycles.find(c=>c.status==="active");
-    async function submit(e){ e?.preventDefault?.(); if(createLock.current)return; if(!name.trim()||!start||!end){setErr("املأ جميع الحقول");return;} if(end<start){setErr("تاريخ النهاية قبل البداية");return;} createLock.current=true;setSaving(true);try{const ok=await onCreate({name:name.trim(),start_date:start,end_date:end,status:"active"});if(ok===true){setOpen(false);setName("");setStart("");setEnd("");setEndTouched(false);setErr("");}}catch(error){setErr(error?.message||"تعذّر إنشاء الدورة. حاول مرة أخرى.");}finally{setSaving(false);createLock.current=false;}}
-    const statusLabel={active:"نشطة",closed:"مغلقة",cancelled:"ملغاة",draft:"مسودة"};
-    const actionConfig={close:["إغلاق الدورة","سيُوقف إضافة تقييمات جديدة، ويمكن إعادة فتحها لاحقًا.","تأكيد الإغلاق",onClose],reopen:["إعادة فتح الدورة","ستعود الدورة نشطة ويمكن إضافة تقييمات جديدة.","تأكيد إعادة الفتح",onReopen],cancel:["إلغاء الدورة","ستبقى التقييمات محفوظة في السجل، لكن الدورة لن تُحتسب.","تأكيد الإلغاء",onCancel],trash:["نقل لسلة المهملات","يمكن استرجاع الدورة من سلة المهملات.","نقل لسلة المهملات",onTrash]};
-    return h("div",{className:"cycles-screen"},
-      h("div",{className:"section-heading"},h("div",null,h("span",{className:"eyebrow"},"إدارة الأداء"),h("h1",null,"دورات التقييم")),h("button",{type:"button",className:"create-cycle",onClick:()=>setOpen(true),disabled:!!active},h(Icon,{svg:ICONS.plus,size:17}),"دورة جديدة")),
-      active && h("div",{className:"cycle-note"},"توجد دورة نشطة. أغلقها قبل إنشاء دورة أخرى."),
-      !cycles.length?h(EmptyState,{icon:h(Icon,{svg:ICONS.clock,size:28}),title:"لا توجد دورات",body:"أنشئ أول دورة لتبدأ تقييم الفريق."}):h("div",{className:"cycles-grid"},cycles.map(c=>{
-        const evs=evaluations.filter(e=>e.cycle_id===c.id&&e.status==="active");
-        const covered=new Set(evs.map(e=>e.employee_id)).size;
-        const pct=employees.length?Math.round(covered/employees.length*100):0;
-        return h("article",{key:c.id,className:"cycle-tile"},h("div",{className:"cycle-tile-top"},h("span",{className:`cycle-state ${c.status}`},statusLabel[c.status]||c.status),h("small",null,fmtDate(c.start_date)," — ",fmtDate(c.end_date))),
-          h("h2",null,c.name),h("div",{className:"cycle-numbers"},h("span",null,h("strong",null,covered)," / ",employees.length," موظف"),h("span",null,evs.length," تقييم")),
-          h("div",{className:"cycle-progress"},h("span",{style:{width:`${pct}%`}})),
-          h("button",{type:"button",className:"cycle-open",onClick:()=>onOpenReports(c.id)},"افتح لوحة الدورة",h(Icon,{svg:ICONS.back,size:16})),
-          h("div",{className:"cycle-actions"},c.status==="active"&&h("button",{onClick:()=>setActionTarget({cycle:c,action:"close"})},"إغلاق"),c.status==="closed"&&h("button",{onClick:()=>setActionTarget({cycle:c,action:"reopen"}),disabled:!!active},"إعادة فتح"),c.status==="active"&&h("button",{onClick:()=>setActionTarget({cycle:c,action:"cancel"})},"إلغاء"),h("button",{onClick:()=>setActionTarget({cycle:c,action:"trash"}),"aria-label":`نقل ${c.name} لسلة المهملات`},"نقل للسلة")));
-      })),
-      open&&h(Modal,{title:"إنشاء دورة تقييم",onClose:()=>!saving&&setOpen(false),footer:h(React.Fragment,null,h(Btn,{variant:"primary",onClick:submit,disabled:saving},saving?"جارِ الإنشاء…":"إنشاء وتفعيل"),h(Btn,{variant:"ghost",disabled:saving,onClick:()=>setOpen(false)},"إلغاء"))},
-        h(Field,{label:"اسم الدورة"},h("input",{style:s.input,value:name,onChange:e=>setName(e.target.value),placeholder:"مثال: تقييم سبتمبر"})),
-        h(Field,{label:"تاريخ البداية"},h("input",{type:"date",style:s.input,value:start,onChange:e=>{setStart(e.target.value);if(!endTouched&&e.target.value)setEnd(addOneMonth(e.target.value));}})),
-        h(Field,{label:"تاريخ النهاية"},h("input",{type:"date",style:s.input,value:end,onChange:e=>{setEnd(e.target.value);setEndTouched(true);}})),err&&h("div",{style:s.errText},err)),
-      actionTarget&&h(Modal,{title:actionConfig[actionTarget.action][0],onClose:()=>!actionBusy&&setActionTarget(null),footer:h(React.Fragment,null,h(Btn,{variant:actionTarget.action==="reopen"?"primary":"danger",disabled:actionBusy,onClick:commitAction},actionBusy?"جارِ الحفظ…":actionConfig[actionTarget.action][2]),h(Btn,{variant:"ghost",disabled:actionBusy,onClick:()=>setActionTarget(null)},"تراجع"))},h("p",null,actionTarget.cycle.name," — ",actionConfig[actionTarget.action][1]),err&&h("p",{role:"alert",style:s.errText},err),actionBusy&&h("p",{role:"status"},"جارِ تحديث الدورة…"),actionTarget.action==="close"&&(()=>{const cycleEvs=evaluations.filter(e=>e.cycle_id===actionTarget.cycle.id&&e.status==="active");const covered=new Set(cycleEvs.map(e=>e.employee_id)).size;const pending=Math.max(0,employees.filter(e=>!e.archived&&!e.deleted_at).length-covered);return h("div",{className:"close-summary"},h("div",null,h("span",null,"الموظفون الذين لديهم تقييم"),h("strong",null,covered)),h("div",null,h("span",null,"عدد التقييمات المسجلة"),h("strong",null,cycleEvs.length)),h("div",null,h("span",null,"موظفون بلا تقييم"),h("strong",null,pending)),pending>0&&h("small",null,"يمكنك إغلاق الدورة الآن أو الرجوع لإكمال التقييمات. الإغلاق لا يحذف أي بيانات."));})()));
-  }
-  function ReportsOverall({employees,cycles,evaluations,computeScore,ratingFor,onOpenEmployee,initialCycleId,cycleAwards=[],awardsReady=true,onAward}) {
-    const h=React.createElement;
-    const [cycleId,setCycleId]=useState(initialCycleId||cycles.find(c=>c.status==="active")?.id||cycles[0]?.id||"");
-    const [filter,setFilter]=useState("all"),[query,setQuery]=useState(""),[printMarkup,setPrintMarkup]=useState(""),[printMessage,setPrintMessage]=useState(""),[awardOpen,setAwardOpen]=useState(false),[selectedWinner,setSelectedWinner]=useState(""),[savingAward,setSavingAward]=useState(false);
-    useEffect(()=>{
-      document.body.classList.toggle("elm-print-preview-open",Boolean(printMarkup));
-      return ()=>document.body.classList.remove("elm-print-preview-open");
-    },[printMarkup]);
-    useEffect(()=>{if(initialCycleId)setCycleId(initialCycleId);else if(!cycleId&&cycles.length)setCycleId(cycles.find(c=>c.status==="active")?.id||cycles[0].id);},[initialCycleId,cycles]);
-    const cycle=cycles.find(c=>c.id===cycleId);
-    const rows=employees.map(emp=>{const evs=cycle?evaluations.filter(e=>e.employee_id===emp.id&&e.cycle_id===cycle.id&&e.status==="active"):[];const score=evs.length?computeScore(emp.id,cycle.id):null;return{emp,score,total:evs.length,rating:score===null?"لم يُقيّم":ratingFor(score)};}).sort((a,b)=>(b.score??-1)-(a.score??-1)||a.emp.name.localeCompare(b.emp.name,"ar"));
-    const rated=rows.filter(r=>r.total>0),best=rated[0]||null,leaders=best?rated.filter(r=>r.score===best.score):[];
-    const average=rated.length?Math.round(rated.reduce((sum,r)=>sum+r.score,0)/rated.length):null;
-    const savedAward=cycleAwards.find(a=>a.cycle_id===cycleId)||null;
-    useEffect(()=>{setSelectedWinner(leaders.length===1?leaders[0].emp.id:"");},[cycleId,leaders.map(r=>r.emp.id).join("|")]);
-    const filtered=rows.filter(r=>(filter==="all"||(filter==="rated"?r.total>0:r.total===0))&&(r.emp.name.includes(query)||String(r.emp.employee_code||"").includes(query)));
-    function exportCsv(){
-      if(!cycle)return;
-      const quote=value=>'"'+String(value??"").replace(/"/g,'""')+'"';
-      const headers=["الترتيب","اسم الموظف","المسمى الوظيفي","الرقم الوظيفي","النتيجة من 100","عدد التقييمات","إيجابي","سلبي","التقدير"];
-      const data=rows.map((r,i)=>{const evs=evaluations.filter(e=>e.employee_id===r.emp.id&&e.cycle_id===cycle.id&&e.status==="active");return[i+1,r.emp.name,r.emp.profession||"",r.emp.employee_code||"",r.score===null?"":Math.round(r.score),r.total,evs.filter(e=>e.type==="positive").length,evs.filter(e=>e.type==="negative").length,r.rating];});
-      const delim=";";
-      const csvRow=row=>row.map(value=>quote(value).replace(/^"([=+@-])/,'"\t$1')).join(delim);
-      const summary=["تقرير نتائج الموظفين - ELM CAFE"];
-      const reportRows=[summary,["الدورة",cycle.name],["من",fmtDate(cycle.start_date),"إلى",fmtDate(cycle.end_date)],["تاريخ التصدير",new Date().toLocaleDateString("ar-EG")],["عدد الموظفين",rows.length,"تم تقييمهم",rated.length,"متوسط النقاط",average??"—"],[],headers,...data];
-      const blob=new Blob(["\uFEFFsep=;\r\n"+reportRows.map(csvRow).join("\r\n")],{type:"text/csv;charset=utf-8"});
-      const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="elm-cafe-"+String(cycle.name).replace(/[^\w\u0600-\u06FF-]+/g,"-")+".csv";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    }
-    function openPrintableReport(){
-      if(!printMarkup)return;
-      setPrintMessage("");
-      try{window.print();}catch(_){setPrintMessage("تعذر فتح الطباعة من هذا المتصفح. افتح الموقع في Safari أو Chrome وأعد المحاولة.");}
-    }
-    async function confirmWinner(){
-      const selected=leaders.find(r=>r.emp.id===selectedWinner);if(!selected||savingAward)return;
-      setSavingAward(true);
-      try{
-        const evs=evaluations.filter(e=>e.employee_id===selected.emp.id&&e.cycle_id===cycle.id&&e.status==="active");
-        const ok=await onAward({cycle_id:cycle.id,cycle_name:cycle.name,employee_id:selected.emp.id,employee_name:selected.emp.name,score:Math.round(selected.score),evaluation_count:selected.total,positive_count:evs.filter(e=>e.type==="positive").length,negative_count:evs.filter(e=>e.type==="negative").length,tied_employee_count:leaders.length});
-        if(ok)setAwardOpen(false);
-      }finally{setSavingAward(false);}
-    }
-    return h("div",{className:"report-screen"},
-      h("section",{className:"report-head"},h("span",{className:"eyebrow"},"تحليل الأداء"),h("h1",null,"تقارير الفريق"),h("label",null,"دورة التقييم",h("select",{value:cycleId,onChange:e=>setCycleId(e.target.value)},cycles.map(c=>h("option",{key:c.id,value:c.id},c.name))))),
-      !cycle?h(EmptyState,{icon:h(Icon,{svg:ICONS.file,size:28}),title:"لا توجد دورة",body:"أنشئ دورة تقييم أولًا."}):h(React.Fragment,null,
-        h("div",{className:"report-stats"},[["تم تقييمهم",rated.length],["لم يُقيّموا",rows.length-rated.length],["متوسط النقاط",average??"—"]].map(([label,value])=>h("div",{key:label},h("strong",null,value),h("small",null,label)))),
-        (savedAward||best)&&h("div",{className:"mvp-card"},h("span",{className:"mvp-medal"},"★"),h("span",{className:"mvp-copy"},h("small",null,savedAward?"الفائز المعتمد بالمكافأة":"أعلى نتيجة حاليًا"),h("strong",null,savedAward?savedAward.employee_name:(leaders.length>1?leaders.length+" موظفين متعادلون":best.emp.name)),h("small",null,savedAward?savedAward.chosen_by_name:(leaders.length>1?"الاختيار النهائي لك":best.emp.profession||"موظف"))),h("span",{className:"mvp-score"},savedAward?savedAward.score:Math.round(best.score),h("small",null,"من 100"))),
-        savedAward&&h("div",{className:"award-snapshot-note"},h("strong",null,"النتيجة المحفوظة: "),savedAward.employee_name," · ",savedAward.score," من 100 · ",savedAward.evaluation_count," تقييم · اعتمده ",savedAward.chosen_by_name," · ",fmtDateTime(savedAward.created_at),"۔"),
-        !savedAward&&cycle.status==="closed"&&h("button",{type:"button",className:"award-approve-button",disabled:!awardsReady||!leaders.length,onClick:()=>{setSelectedWinner(leaders.length===1?leaders[0].emp.id:"");setAwardOpen(true);}},leaders.length>1?"اختيار الفائز من المتعادلين":"اعتماد الفائز وحفظ النتيجة"),
-        !savedAward&&cycle.status!=="closed"&&h("div",{className:"award-setup-note"},"اعتماد الفائز يظهر بعد إغلاق الدورة. لا يوجد حد أدنى للتقييمات."),
-        !awardsReady&&h("div",{className:"award-setup-note"},"لتفعيل سجل الفائز المحفوظ، شغّل ملف إعداد سجل الفائز في Supabase."),
-        h("div",{className:"report-toolbar"},h("div",null,h("span",{className:"eyebrow"},"تفاصيل الدورة"),h("h2",null,"الموظفون")),h("div",{className:"report-actions"},h("button",{className:"text-action",type:"button",onClick:exportCsv},"تنزيل بيانات التقرير (CSV)"),h("button",{className:"text-action",type:"button",onClick:()=>{const section=document.querySelector(".report-screen .print-report");if(section)setPrintMarkup(section.innerHTML);}},"معاينة وطباعة التقرير"))),
-        h("input",{className:"modern-search",value:query,onChange:e=>setQuery(e.target.value),placeholder:"ابحث عن موظف","aria-label":"بحث التقارير"}),
-        h("div",{className:"segmented"},[["all","الكل"],["rated","تم تقييمهم"],["pending","لم يُقيّموا"]].map(([key,label])=>h("button",{key,type:"button",className:filter===key?"selected":"",onClick:()=>setFilter(key)},label))),
-        h("section",{className:"print-report","aria-label":"تقرير الدورة للطباعة"},
-          h("header",{className:"print-report-head"},h("div",null,h("small",null,"ELM CAFE · تقرير تقييم الموظفين"),h("h1",null,cycle.name),h("p",null,"الفترة: ",fmtDate(cycle.start_date)," — ",fmtDate(cycle.end_date))),h("div",{className:"print-report-stamp"},"تاريخ الطباعة",h("strong",null,new Date().toLocaleDateString("ar-SA")))),
-          h("div",{className:"print-report-summary"},[["إجمالي الموظفين",rows.length],["تم تقييمهم",rated.length],["لم يُقيّموا",rows.length-rated.length],["متوسط النقاط",average??"—"]].map(([label,value])=>h("div",{key:label},h("small",null,label),h("strong",null,value)))),
-          savedAward&&h("div",{className:"print-award"},"الفائز المعتمد بالمكافأة: ",h("strong",null,savedAward.employee_name)," — ",savedAward.score," من 100"),
-          h("h2",null,"نتائج الموظفين"),
-          h("table",{className:"print-report-table"},h("thead",null,h("tr",null,["م","الموظف","الوظيفة","رقم الموظف","النتيجة","عدد التقييمات","التقدير"].map(label=>h("th",{key:label},label)))),h("tbody",null,rows.map((r,index)=>h("tr",{key:r.emp.id},h("td",null,index+1),h("td",null,r.emp.name),h("td",null,r.emp.profession||"—"),h("td",null,r.emp.employee_code||"—"),h("td",null,r.score===null?"—":Math.round(r.score)+" / 100"),h("td",null,r.total),h("td",null,r.rating))))),
-          h("footer",null,"يعرض التقرير التقييمات النشطة فقط. التقييمات الملغاة لا تدخل في النتيجة.")),
-        filtered.length?h("div",{className:"report-grid"},filtered.map(r=>h("button",{key:r.emp.id,type:"button",className:"report-tile",onClick:()=>onOpenEmployee(r.emp.id)},h("span",{className:"report-rank"},r.total?"#"+(rows.indexOf(r)+1):"—"),h("span",{className:"report-score"},r.score===null?"—":Math.round(r.score),h("small",null,r.score===null?"بلا تقييم":"/ 100")),h("strong",null,r.emp.name),h("small",null,r.emp.profession||"موظف"),h("span",{className:r.total?"status-chip done":"status-chip"},r.total?r.total+" تقييم · "+r.rating:"لم يُقيّم بعد")))):h("div",{className:"dash-empty"},"لا توجد نتائج مطابقة.")),
-      printMarkup&&ReactDOM.createPortal(h("div",{className:"report-print-preview",role:"dialog","aria-modal":true,"aria-label":"معاينة تقرير الدورة"},h("div",{className:"report-preview-toolbar"},h("button",{type:"button",onClick:openPrintableReport},"فتح الطباعة / حفظ PDF"),h("button",{type:"button",onClick:()=>{setPrintMarkup("");setPrintMessage("");}},"إغلاق المعاينة")),printMessage&&h("p",{className:"report-print-message",role:"status"},printMessage),h("div",{className:"report-preview-page"},h("section",{className:"print-report",dangerouslySetInnerHTML:{__html:printMarkup}}))),document.body),
-      awardOpen&&h(Modal,{title:leaders.length>1?"اختيار الفائز من المتعادلين":"تأكيد الفائز بالدورة",onClose:()=>!savingAward&&setAwardOpen(false),footer:h(React.Fragment,null,h(Btn,{variant:"primary",disabled:!selectedWinner||savingAward,onClick:confirmWinner},savingAward?"جارِ الحفظ…":"حفظ واعتماد الفائز"),h(Btn,{variant:"ghost",disabled:savingAward,onClick:()=>setAwardOpen(false)},"رجوع"))},
-        h("div",{className:"award-candidate-list"},leaders.map(r=>h("label",{key:r.emp.id,className:"award-candidate "+(selectedWinner===r.emp.id?"selected":"")},h("input",{type:"radio",name:"cycle-winner",value:r.emp.id,checked:selectedWinner===r.emp.id,onChange:()=>setSelectedWinner(r.emp.id)}),h("span",null,h("strong",null,r.emp.name),h("small",null,r.emp.profession||"موظف"," · ",r.total," تقييم")),h("b",null,Math.round(r.score)," / 100")))),
-        h("p",{className:"award-modal-note"},leaders.length>1?"النتيجة متعادلة؛ اختار الفائز بنفسك. لن يختار التطبيق تلقائيًا.":"سيحفظ التطبيق اسم الفائز ونتيجته وعدد تقييماته وقت الاعتماد.")));
-  }
+  const AdminUsers=lazyScreen("management","AdminUsers",()=>({Btn,EmptyState,Field,ICONS,Icon,Modal,PERMISSION_DEFS,Switch,avatarColor,emptyPerms,fmtDate,s,tr,useEffect,useRef,useState}));
+  const AdminCategories=lazyScreen("management","AdminCategories",()=>({Btn,EmptyState,Field,ICONS,Icon,Modal,PERMISSION_DEFS,Switch,avatarColor,emptyPerms,fmtDate,s,tr,useEffect,useRef,useState}));
+  
+  const AdminCycles=lazyScreen("management","AdminCycles",()=>({Btn,EmptyState,Field,ICONS,Icon,Modal,PERMISSION_DEFS,Switch,avatarColor,emptyPerms,fmtDate,s,tr,useEffect,useRef,useState}));
+  const ReportsOverall=lazyScreen("reports","ReportsOverall",()=>({Btn,EmptyState,Field,ICONS,Icon,Modal,fmtDate,fmtDateTime,locale,matches,s,tr,useEffect,useState}));
   function QuickEmployeeSearch({ employees, onClose, onOpen }) {
     const h=React.createElement;
     const [query,setQuery]=useState("");
@@ -2292,69 +2133,12 @@ var __startElmCafeApp__ = (() => {
               !e.violation_reviewed&&h("button",{type:"button",className:"notification-review",disabled:reviewingId===e.id,onClick:()=>review(e.id)},reviewingId===e.id?"جارٍ الحفظ…":"تحديد كمراجَعة")));
         }):h("div",{className:"notification-empty"},"لا توجد مخالفات مسجلة."),items.length>visibleCount&&h("button",{type:"button",className:"notification-more",onClick:()=>setVisibleCount(count=>count+20)},`عرض المزيد (${items.length-visibleCount})`))));
   }
-  function AuditLogScreen({ audit, displayTarget, onTrash, onTrashAll }) {
-    const [selected, setSelected] = useState(null);
-    const [confirmClear, setConfirmClear] = useState(false);
-    const [visibleCount,setVisibleCount]=useState(20);
-    const [moving,setMoving]=useState(false);
-    return /* @__PURE__ */ React.createElement("div", { className:"audit-screen" }, audit.length > 0 && /* @__PURE__ */ React.createElement(Btn, { variant: "danger", style: { width: "100%", marginBottom: 12 }, onClick: () => setConfirmClear(true) }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.trash, size: 14 }), " \u0646\u0642\u0644 \u0627\u0644\u0633\u062C\u0644 \u0627\u0644\u062D\u0627\u0644\u064A \u0644\u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A"), !audit.length ? /* @__PURE__ */ React.createElement(EmptyState, { icon: /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.clipboard, size: 28 }), title: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0633\u062C\u0644 \u0628\u0639\u062F", body: "" }) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, audit.slice(0,visibleCount).map((a) => /* @__PURE__ */ React.createElement("div", { key: a.id, style: { ...s.rowCard, flexDirection: "column", alignItems: "stretch" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setSelected(a), style: { background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "right", width: "100%" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13 } }, /* @__PURE__ */ React.createElement("b", null, a.actor), " \u2014 ", a.action), a.target && a.target !== "-" && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)" } }, displayTarget(a.target)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", marginTop: 2 } }, fmtDateTime(a.created_at))), /* @__PURE__ */ React.createElement("button", { onClick: () => onTrash(a.id), style: { ...s.linkDanger, marginTop: 6, alignSelf: "flex-start" } }, "\u0646\u0642\u0644 \u0644\u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A")))), audit.length>visibleCount && React.createElement("button",{type:"button",className:"audit-load-more",onClick:()=>setVisibleCount(n=>n+20)},"عرض المزيد"), selected && /* @__PURE__ */ React.createElement(Modal, { title: "\u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u062D\u062F\u062B", onClose: () => setSelected(null), footer: /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setSelected(null) }, "\u0625\u063A\u0644\u0627\u0642") }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10, fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { color: "var(--ink-3)", fontSize: 11 } }, "\u0627\u0644\u0642\u0627\u0626\u0645 \u0628\u0627\u0644\u0625\u062C\u0631\u0627\u0621"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, selected.actor)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { color: "var(--ink-3)", fontSize: 11 } }, "\u0627\u0644\u0625\u062C\u0631\u0627\u0621"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, selected.action)), selected.target && selected.target !== "-" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { color: "var(--ink-3)", fontSize: 11 } }, "\u0627\u0644\u0639\u0646\u0635\u0631 \u0627\u0644\u0645\u062A\u0623\u062B\u0631"), /* @__PURE__ */ React.createElement("div", null, displayTarget(selected.target))), selected.details && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { color: "var(--ink-3)", fontSize: 11 } }, "\u062A\u0641\u0627\u0635\u064A\u0644 \u0625\u0636\u0627\u0641\u064A\u0629"), /* @__PURE__ */ React.createElement("div", { style: { background: "var(--bg-2)", padding: "8px 10px", borderRadius: 8, wordBreak: "break-word" } }, selected.details)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { color: "var(--ink-3)", fontSize: 11 } }, "\u0627\u0644\u062A\u0627\u0631\u064A\u062E \u0648\u0627\u0644\u0648\u0642\u062A"), /* @__PURE__ */ React.createElement("div", null, fmtDateTime(selected.created_at))))), confirmClear && /* @__PURE__ */ React.createElement(Modal, { title: "\u0646\u0642\u0644 \u0627\u0644\u0633\u062C\u0644 \u0627\u0644\u062D\u0627\u0644\u064A \u0644\u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A", onClose: () => setConfirmClear(false), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "danger", onClick: async () => {
-      if(moving)return;
-      setMoving(true);
-      try { if(await onTrashAll()===true) setConfirmClear(false); } finally { setMoving(false); }
-    } }, "\u0646\u0642\u0644 \u0627\u0644\u0643\u0644 \u0644\u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setConfirmClear(false) }, "\u062A\u0631\u0627\u062C\u0639")) }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, "\u0633\u064A\u062A\u0645 \u0646\u0642\u0644 \u0643\u0644 \u0627\u0644\u0623\u062D\u062F\u0627\u062B \u0627\u0644\u0638\u0627\u0647\u0631\u0629 \u062D\u0627\u0644\u064A\u064B\u0627 \u0625\u0644\u0649 \u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A. \u062A\u0642\u062F\u0631 \u062A\u0633\u062A\u0631\u062C\u0639\u0647\u0627 \u0645\u0646 \u0647\u0646\u0627\u0643 \u0641\u064A \u0623\u064A \u0648\u0642\u062A.")));
-  }
-  function TrashScreen({ cycles, audit, archivedCategories=[], archivedBands=[], onRestoreCategory, onRestoreBand, onRestoreCycle, onDeleteCycleForever, onRestoreAudit, onDeleteAuditForever, onEmptyTrash }) {
-    const [confirmEmpty, setConfirmEmpty] = useState(false);
-    const [confirmItem, setConfirmItem] = useState(null);
-    const [deleteBusy, setDeleteBusy] = useState(false);
-    const isEmpty = !cycles.length && !audit.length && !archivedCategories.length && !archivedBands.length;
-    const h=React.createElement;
-    const configTrash=(archivedCategories.length||archivedBands.length)?h("section",{style:{marginBottom:20}},h("h3",null,"تصنيفات ونطاقات محفوظة في السلة"),h("p",{style:{fontSize:12,color:"var(--ink-3)"}},"يمكن استرجاعها هنا. لا يشمل زر إفراغ الدورات وسجل التدقيق هذه العناصر."),
-      [...archivedCategories.map(c=>({type:"category",id:c.id,label:c.name})),...archivedBands.map(b=>({type:"band",id:b.id,label:`${b.label} (${b.min}–${b.max})`}))].map(item=>h("div",{key:item.id,style:{...s.rowCard,marginBottom:8}},h("span",{style:{flex:1}},item.label),h(Btn,{onClick:()=>item.type==="category"?onRestoreCategory(item.id):onRestoreBand(item.id)},"استرجاع")))):null;
-    return /* @__PURE__ */ React.createElement("div", null, configTrash, (cycles.length>0||audit.length>0) && /* @__PURE__ */ React.createElement(Btn, { variant: "danger", style: { width: "100%", marginBottom: 16 }, onClick: () => setConfirmEmpty(true) }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.trash, size: 14 }), " إفراغ الدورات وسجل التدقيق نهائيًا"), isEmpty ? /* @__PURE__ */ React.createElement(EmptyState, { icon: /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.trash, size: 28 }), title: "\u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A \u0641\u0627\u0631\u063A\u0629", body: "\u0623\u064A \u062F\u0648\u0631\u0629 \u0623\u0648 \u062D\u062F\u062B \u062A\u062D\u0630\u0641\u0647 \u0647\u064A\u0638\u0647\u0631 \u0647\u0646\u0627." }) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 20 } }, cycles.length > 0 && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 } }, "\u062F\u0648\u0631\u0627\u062A \u0627\u0644\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u062D\u0630\u0648\u0641\u0629"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, cycles.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.id, style: s.card }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, c.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)", margin: "4px 0 10px" } }, fmtDate(c.start_date), " \u2014 ", fmtDate(c.end_date)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: () => onRestoreCycle(c.id) }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.rotate, size: 14 }), " \u0627\u0633\u062A\u0631\u062C\u0627\u0639"), /* @__PURE__ */ React.createElement(Btn, { variant: "danger", onClick: () => setConfirmItem({ type: "cycle", id: c.id, label: c.name }) }, "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A")))))), audit.length > 0 && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 } }, "\u0623\u062D\u062F\u0627\u062B \u0633\u062C\u0644 \u0627\u0644\u062A\u062F\u0642\u064A\u0642 \u0627\u0644\u0645\u062D\u0630\u0648\u0641\u0629"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, audit.map((a) => /* @__PURE__ */ React.createElement("div", { key: a.id, style: s.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13 } }, /* @__PURE__ */ React.createElement("b", null, a.actor), " \u2014 ", a.action), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-3)", margin: "4px 0 10px" } }, fmtDateTime(a.created_at)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: () => onRestoreAudit(a.id) }, /* @__PURE__ */ React.createElement(Icon, { svg: ICONS.rotate, size: 14 }), " \u0627\u0633\u062A\u0631\u062C\u0627\u0639"), /* @__PURE__ */ React.createElement(Btn, { variant: "danger", onClick: () => setConfirmItem({ type: "audit", id: a.id, label: `${a.actor} \u2014 ${a.action}` }) }, "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A"))))))), confirmItem && /* @__PURE__ */ React.createElement(Modal, { title: "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A", onClose: () => setConfirmItem(null), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "danger", onClick: async () => {
-      if (deleteBusy) return;
-      setDeleteBusy(true);
-      try {
-        const ok = await (confirmItem.type === "cycle" ? onDeleteCycleForever : onDeleteAuditForever)(confirmItem.id);
-        if (ok === true) setConfirmItem(null);
-      } finally { setDeleteBusy(false); }
-    } }, "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A \u2014 \u0644\u0627 \u0631\u062C\u0648\u0639"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setConfirmItem(null) }, "\u062A\u0631\u0627\u062C\u0639")) }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--red)", fontWeight: 600 } }, '\u0633\u064A\u062A\u0645 \u062D\u0630\u0641 "', confirmItem.label, '" \u0646\u0647\u0627\u0626\u064A\u064B\u0627 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0627\u0644\u062A\u0631\u0627\u062C\u0639 \u0639\u0646 \u0647\u0630\u0627 \u0627\u0644\u0625\u062C\u0631\u0627\u0621 \u0623\u0628\u062F\u064B\u0627.')), confirmEmpty && /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0641\u0631\u0627\u063A \u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A", onClose: () => setConfirmEmpty(false), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { variant: "danger", onClick: async () => {
-      if (deleteBusy) return;
-      setDeleteBusy(true);
-      try { if (await onEmptyTrash() === true) setConfirmEmpty(false); }
-      finally { setDeleteBusy(false); }
-    } }, "\u0625\u0641\u0631\u0627\u063A \u0646\u0647\u0627\u0626\u064A\u064B\u0627"), /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setConfirmEmpty(false) }, "\u062A\u0631\u0627\u062C\u0639")) }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--red)", fontWeight: 600 } }, "\u0633\u064A\u062A\u0645 \u062D\u0630\u0641 \u0643\u0644 \u0645\u0627 \u0641\u064A \u0633\u0644\u0629 \u0627\u0644\u0645\u0647\u0645\u0644\u0627\u062A \u0646\u0647\u0627\u0626\u064A\u064B\u0627 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A (", cycles.length, " \u062F\u0648\u0631\u0629\u060C ", audit.length, " \u062D\u062F\u062B). \u0644\u0627 \u064A\u0645\u0643\u0646 \u0627\u0644\u062A\u0631\u0627\u062C\u0639.")));
-  }
-  function EvaluatorActivityScreen({ evaluations, activeCycle, cycles }) {
-    const h=React.createElement;
-    const [cycleId,setCycleId]=useState(activeCycle?.id||cycles[0]?.id||"");
-    useEffect(()=>{if(!cycles.some(c=>c.id===cycleId)&&cycles.length)setCycleId(activeCycle?.id||cycles[0].id);},[cycles,activeCycle,cycleId]);
-    const cycle=cycles.find(c=>c.id===cycleId);
-    const evs=cycle?evaluations.filter(e=>e.cycle_id===cycle.id&&e.status==="active"):[];
-    const grouped={};
-    evs.forEach(e=>{
-      const id=e.evaluator_id||e.evaluator_name||"unknown";
-      if(!grouped[id])grouped[id]={id,name:e.evaluator_name||"مقيم",positive:0,negative:0,total:0,positivePoints:0,negativePoints:0};
-      const row=grouped[id];row.total++;
-      if(e.type==="positive"){row.positive++;row.positivePoints+=Number(e.category_points)||0;}
-      else {row.negative++;row.negativePoints+=Number(e.category_points)||0;}
-    });
-    const rows=Object.values(grouped).map(r=>({...r,positiveRate:r.total?Math.round(r.positive/r.total*100):0,net:r.positivePoints-r.negativePoints,avgNet:r.total?(r.positivePoints-r.negativePoints)/r.total:0})).sort((a,b)=>b.total-a.total);
-    const teamAvg=rows.length?rows.reduce((sum,r)=>sum+r.avgNet,0)/rows.length:0;
-    return h("div",{className:"evaluator-compare"},h(Field,{label:"الدورة"},h("select",{style:s.input,value:cycleId,onChange:e=>setCycleId(e.target.value)},cycles.map(c=>h("option",{key:c.id,value:c.id},c.name)))),
-      h("div",{className:"compare-intro"},h("strong",null,"نشاط المقيمين"),h("p",null,"الأرقام للمقارنة والمراجعة فقط؛ اختلاف عدد التقييمات أو نتيجتها لا يثبت وحده أن التقييم غير صحيح.")),
-      !cycle||!rows.length?h(EmptyState,{icon:h(Icon,{svg:ICONS.chart,size:28}),title:"لا يوجد نشاط بعد",body:"لا توجد تقييمات نشطة في هذه الدورة."}):h("div",{className:"compare-list"},rows.map(r=>{
-        const rateText=`${r.positiveRate}٪ إيجابي`;
-        const diff=r.avgNet-teamAvg;
-        return h("article",{key:r.id,className:"compare-card"},h("div",{className:"compare-card-head"},h("strong",null,r.name),h("span",null,r.total," تقييم")),
-          h("div",{className:"compare-meter"},h("span",{style:{width:`${r.positiveRate}%`}})),
-          h("div",{className:"compare-metrics"},h("span",{className:"positive-text"},"+",r.positive," إيجابي · ",r.positivePoints," نقطة"),h("span",{className:"negative-text"},"−",r.negative," سلبي · ",r.negativePoints," نقطة")),
-          h("div",{className:"compare-footer"},h("span",null,rateText),h("span",null,"متوسط الأثر الصافي ",diff>0?"+":"",diff.toFixed(1)," نقطة/تقييم")));
-      })));
-  }
+  const AuditLogScreen=lazyScreen("records","AuditLogScreen",()=>({Btn,EmptyState,ICONS,Icon,Modal,fmtDate,fmtDateTime,s,supabase,useEffect,useState}));
+  const TrashScreen=lazyScreen("records","TrashScreen",()=>({Btn,EmptyState,ICONS,Icon,Modal,fmtDate,fmtDateTime,s,supabase,useEffect,useState}));
+  const EvaluatorActivityScreen=lazyScreen("reports","EvaluatorActivityScreen",()=>({Btn,EmptyState,Field,ICONS,Icon,Modal,fmtDate,fmtDateTime,locale,matches,s,tr,useEffect,useState}));
   const s = {
     topbar: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "6px 8px 6px 14px", background: "var(--glass)", backdropFilter: "blur(22px) saturate(165%)", WebkitBackdropFilter: "blur(22px) saturate(165%)", position: "fixed", top: "calc(14px + env(safe-area-inset-top, 0px))", left: 10, right: 10, maxWidth: 460, margin: "0 auto", zIndex: 9, border: "1px solid var(--glass-border)", borderRadius: 22, boxShadow: "0 10px 30px rgba(33,30,24,.1), inset 0 1px rgba(255,255,255,.85)" },
-    body: { padding: "18px 16px 44px", paddingTop: "var(--topbar-space, calc(88px + env(safe-area-inset-top, 0px)))" },
+    body: { padding: "18px 16px 44px", paddingTop: "var(--topbar-space, 0px)" },
     bottomNav: { position: "fixed", bottom: "calc(8px + env(safe-area-inset-bottom, 0px))", left: 16, right: 16, maxWidth: 452, margin: "0 auto", display: "flex", background: "rgba(255,255,255,0.72)", backdropFilter: "blur(16px) saturate(180%)", WebkitBackdropFilter: "blur(16px) saturate(180%)", border: "1px solid var(--glass-border)", borderRadius: 20, boxShadow: "0 8px 28px rgba(33,30,24,0.16), 0 2px 8px rgba(33,30,24,0.08)", zIndex: 8, padding: "2px 2px" },
     bottomNavBtn: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px 4px 5px", minHeight: 48, background: "none", border: "none", cursor: "pointer" },
     iconBtn: { background: "transparent", border: "none", cursor: "pointer", padding: 10, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-2)", minWidth: 44, minHeight: 44 },
@@ -2382,7 +2166,8 @@ var __startElmCafeApp__ = (() => {
     modalCard: { background: "var(--glass-strong)", borderRadius: 18, padding: 22, width: "100%", maxWidth: 360, boxSizing: "border-box", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 12px 40px rgba(20,18,14,0.22)" },
     toast: { position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "var(--forest)", color: "#fff", padding: "12px 20px", borderRadius: 18, fontSize: 13, fontWeight: 600, zIndex: 60, boxShadow: "0 6px 20px rgba(0,0,0,0.2)", maxWidth: "calc(100% - 32px)", textAlign: "center" }
   };
-  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(AppErrorBoundary, null, React.createElement(App, null)));
+  window.__elmReactMounted=true;
+  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(AppErrorBoundary, null, React.createElement(React.Fragment,null,React.createElement(OfflineBanner),React.createElement(App, null))));
 });
 
 (function boot(attemptsLeft) {
