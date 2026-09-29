@@ -1,5 +1,5 @@
 var __startElmCafeApp__ = (() => {
-  window.ELM_CAFE_VERSION = "1.2.0";
+  window.ELM_CAFE_VERSION = "1.2.2";
   const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
   const SUPABASE_URL = "https://izfimghzcasnbmdsftps.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_FnhXzXCDLHTwvGGkZBBrkA_UPrm-tZ3";
@@ -290,7 +290,7 @@ var __startElmCafeApp__ = (() => {
       const stack = typeof error?.stack === "string" ? error.stack.split("\n").slice(0, 8).join("\n") : "";
       return { failed:true, errorText:[message, stack].filter(Boolean).join("\n") };
     }
-    componentDidCatch(error) { console.error("Elm Cafe render error", error); reportClientError("render_error"); }
+    componentDidCatch(error) { document.getElementById("initial-splash")?.remove(); document.documentElement.classList.remove("elm-booting"); console.error("Elm Cafe render error", error); reportClientError("render_error"); }
     retryRender() { this.setState({ failed:false, errorText:"" }); }
     async recoverSession() { try { await supabase.auth.signOut({scope:"local"}); } catch (_) {} location.replace(location.pathname + "?reload=" + Date.now()); }
     render() {
@@ -469,6 +469,7 @@ var __startElmCafeApp__ = (() => {
       return () => window.removeEventListener('elm-language-change', sync);
     }, []);
     const [booting, setBooting] = useState(true);
+    useLayoutEffect(() => { if (!booting) { document.getElementById("initial-splash")?.remove(); document.documentElement.classList.remove("elm-booting"); } }, [booting]);
     const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || "light");
     useEffect(() => { document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0b0c0e' : '#f4f4f2'); }, [theme]);
     function toggleTheme() {
@@ -933,7 +934,7 @@ var __startElmCafeApp__ = (() => {
       const b = ratingBands.find((b2) => !b2.deleted_at && score >= b2.min && score <= b2.max);
       return b ? b.label : "-";
     }
-    if (booting) return React.createElement("div", { className: "initial-splash" }, React.createElement("img", {src:LOGO_SRC,alt:"ELM CAFE"}), React.createElement("span", { className: "splash-pulse", "aria-hidden":true }));
+    if (booting) return null;
     return /* @__PURE__ */ React.createElement("div", { dir: language === "en" ? "ltr" : "rtl" }, !session && screen !== "resetPassword" && /* @__PURE__ */ React.createElement(
       LoginScreen,
       {
@@ -2007,7 +2008,7 @@ var __startElmCafeApp__ = (() => {
   function loadScreenModule(group){
     if(window.ELM_MODULES?.[group])return Promise.resolve(window.ELM_MODULES[group]);
     if(moduleLoads.has(group))return moduleLoads.get(group);
-    const promise=new Promise((resolve,reject)=>{const script=document.createElement("script");script.src="./modules/"+group+".js?v=1.2.0";const timer=setTimeout(()=>fail(),15000);function fail(){clearTimeout(timer);script.remove();moduleLoads.delete(group);reject(new Error("Screen module unavailable"));}script.onerror=fail;script.onload=()=>{clearTimeout(timer);if(window.ELM_MODULES?.[group])resolve(window.ELM_MODULES[group]);else fail();};document.head.appendChild(script);});moduleLoads.set(group,promise);return promise;
+    const promise=new Promise((resolve,reject)=>{const script=document.createElement("script");script.src="./"+group+".js?v=1.2.2";const timer=setTimeout(()=>fail(),15000);function fail(){clearTimeout(timer);script.remove();moduleLoads.delete(group);reject(new Error("Screen module unavailable"));}script.onerror=fail;script.onload=()=>{clearTimeout(timer);if(window.ELM_MODULES?.[group])resolve(window.ELM_MODULES[group]);else fail();};document.head.appendChild(script);});moduleLoads.set(group,promise);return promise;
   }
   class ScreenBoundary extends React.Component{
     constructor(props){super(props);this.state={error:false};}

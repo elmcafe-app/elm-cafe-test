@@ -495,11 +495,12 @@
 .app-main-content { animation-duration:var(--motion-page) !important; }
 button { transition:background-color var(--motion-fast),color var(--motion-fast),opacity var(--motion-fast); }
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline:2px solid var(--forest); outline-offset:3px; }
-.initial-splash { min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px; }
-.initial-splash img { width:148px !important;height:auto;margin:0 !important; }
-.splash-pulse { animation:none;position:relative;display:block;width:88px;height:4px;border-radius:99px;overflow:hidden;background:var(--gold-10); }
-.splash-pulse::before { content:"";position:absolute;inset-block:0;left:0;width:38px;border-radius:inherit;background:linear-gradient(90deg,var(--gold-dark),var(--gold));animation:elm-splash 1.5s ease-in-out infinite alternate; }
-@keyframes elm-splash { from {transform:translateX(0);opacity:.6} to {transform:translateX(50px);opacity:1} }
+html.elm-booting,html.elm-booting body { width:100%;height:100%;overflow:hidden !important;overscroll-behavior:none;touch-action:none; }
+.initial-splash { position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;overflow:hidden;overscroll-behavior:none;touch-action:none;background:var(--bg);padding:env(safe-area-inset-top,0px) 20px env(safe-area-inset-bottom,0px); }
+.initial-splash img { display:block;width:clamp(152px,42vw,180px) !important;max-height:30vh;object-fit:contain;height:auto;margin:0 !important; }
+.splash-pulse { animation:none;position:relative;display:block;width:120px;height:4px;border-radius:99px;overflow:hidden;background:rgba(201,162,39,.18);box-shadow:inset 0 0 0 1px rgba(201,162,39,.12); }
+.splash-pulse::before { content:"";position:absolute;inset-block:0;left:0;width:44px;border-radius:inherit;background:linear-gradient(90deg,transparent,var(--gold-dark) 30%,var(--gold) 70%,transparent);filter:drop-shadow(0 0 4px rgba(201,162,39,.45));animation:elm-splash 1.55s cubic-bezier(.45,0,.55,1) infinite alternate; }
+@keyframes elm-splash { from {transform:translateX(-44px);opacity:.55} to {transform:translateX(120px);opacity:1} }
 html[lang="en"] body,html[lang="en"] button,html[lang="en"] input,html[lang="en"] select,html[lang="en"] textarea,html[lang="en"] .certificate-print { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;letter-spacing:normal; }
 @media(min-width:900px){html[lang="en"] .app-main-content{margin:0 24px 0 118px}html[lang="en"] .app-topbar{left:118px !important;right:24px !important}html[lang="en"] .app-bottomnav{left:18px !important;right:auto !important}}
 @media(prefers-reduced-motion:reduce){.app-main-content,.app-modal-card,.splash-pulse::before{animation:none !important;transition:none !important}button{transition:none !important}}

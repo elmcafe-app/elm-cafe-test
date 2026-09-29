@@ -13,42 +13,43 @@
 <link rel="manifest" href="./manifest.json" />
 
 
-<script>try { document.documentElement.dataset.theme = localStorage.getItem('elm-theme') === 'dark' ? 'dark' : 'light'; } catch (_) { document.documentElement.dataset.theme = 'light'; }</script>
+<script>document.documentElement.classList.add("elm-booting");try { document.documentElement.dataset.theme = localStorage.getItem('elm-theme') === 'dark' ? 'dark' : 'light'; } catch (_) { document.documentElement.dataset.theme = 'light'; }</script>
 <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
 <link rel="icon" href="./elm-cafe-logo.png" />
 
-<link rel="stylesheet" href="./app.css?v=1.2.0">
+<link rel="stylesheet" href="./app.css?v=1.2.2">
 </head>
 <body>
-<div id="root">
-  <div class="initial-splash"><img src="./elm-cafe-logo.png" alt="شعار علم كافيه"><span class="splash-pulse"></span></div>
-</div>
+<div id="initial-splash" class="initial-splash" role="status" aria-label="جارِ تحميل ELM CAFE"><img src="./elm-cafe-logo.png" alt="ELM CAFE"><span class="splash-pulse" aria-hidden="true"></span></div>
+<div id="root"></div>
 <script>
   window.addEventListener('error', function (e) {
     var msg = (e && e.message) ? e.message : 'خطأ غير معروف';
-    var root = document.getElementById('root');
-    if (!window.__elmReactMounted && root && root.querySelector('.initial-splash')) {
-      root.innerHTML = '<div style="padding:24px;font-family:sans-serif;direction:rtl;text-align:right;color:#A6382C;font-size:14px;line-height:1.6;">' +
+    var splash = document.getElementById('initial-splash');
+    if (!window.__elmReactMounted && splash) {
+      document.documentElement.classList.remove('elm-booting');
+      splash.innerHTML = '<div style="padding:24px;font-family:sans-serif;direction:rtl;text-align:right;color:#A6382C;font-size:14px;line-height:1.6;">' +
         '<b>حدث خطأ أثناء تحميل التطبيق</b><br><br><span id=\"app-error-text\"></span></div>';
       var messageNode = document.getElementById('app-error-text');
       if (messageNode) messageNode.textContent = msg;
     }
   });
   window.setTimeout(function () {
-    var root = document.getElementById('root');
-    if (!window.__elmReactMounted && root && root.querySelector('.initial-splash')) {
-      root.innerHTML = '<div style="padding:24px;font-family:sans-serif;direction:rtl;text-align:center;color:#263d2e;font-size:16px;line-height:1.8;max-width:360px;margin:20vh auto">' +
+    var splash = document.getElementById('initial-splash');
+    if (!window.__elmReactMounted && splash) {
+      document.documentElement.classList.remove('elm-booting');
+      splash.innerHTML = '<div style="padding:24px;font-family:sans-serif;direction:rtl;text-align:center;color:#263d2e;font-size:16px;line-height:1.8;max-width:360px;margin:20vh auto">' +
         '<b>استغرق فتح التطبيق وقتًا أطول من المعتاد</b><p>تأكد من الاتصال بالإنترنت ثم حاول مجددًا.</p>' +
         '<button type="button" onclick="location.reload()" style="border:0;border-radius:12px;background:#24583a;color:white;padding:12px 18px;font:inherit">إعادة المحاولة</button></div>';
     }
   }, 15000);
 </script>
-<script src="./vendor/react.js"></script>
-<script src="./vendor/react-dom.js"></script>
-<script src="./vendor/supabase.js"></script>
-<script src="./i18n.js?v=1.2.0"></script>
-<script src="./public-config.js?v=1.2.0"></script>
-<script src="./app.js?v=1.2.0"></script>
+<script src="./react.js"></script>
+<script src="./react-dom.js"></script>
+<script src="./supabase.js"></script>
+<script src="./i18n.js?v=1.2.2"></script>
+<script src="./public-config.js?v=1.2.2"></script>
+<script src="./app.js?v=1.2.2"></script>
 
 <script>
 if('serviceWorker' in navigator && window.isSecureContext){navigator.serviceWorker.register('./sw.js').catch(function(){});}
